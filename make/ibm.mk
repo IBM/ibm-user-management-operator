@@ -1,3 +1,32 @@
+ROOT_DIR ?= $(abspath $(dir $(firstword $(MAKEFILE_LIST))))
+
+# Local scripts folder used e.g. to store dependencies' installation scripts
+LOCAL_SCRIPTS_DIR ?= $(ROOT_DIR)/scripts
+
+
+ARCH := $(shell uname -m)
+LOCAL_ARCH := "amd64"
+ifeq ($(ARCH),x86_64)
+    LOCAL_ARCH="amd64"
+else ifeq ($(ARCH),ppc64le)
+    LOCAL_ARCH="ppc64le"
+else ifeq ($(ARCH),s390x)
+    LOCAL_ARCH="s390x"
+else ifeq ($(ARCH),arm64)
+    LOCAL_ARCH="arm64"
+else
+    $(error "This system's ARCH $(ARCH) isn't recognized/supported")
+endif
+
+OS := $(shell uname)
+ifeq ($(OS),Linux)
+    LOCAL_OS ?= linux
+else ifeq ($(OS),Darwin)
+    LOCAL_OS ?= darwin
+else
+    $(error "This system's OS $(OS) isn't recognized/supported")
+endif
+
 DEV_VERSION ?= dev # Could be other string or version number
 DEV_REGISTRY ?= quay.io/bedrockinstallerfid
 
@@ -56,4 +85,4 @@ clean-before-commit:
 check: ## @code Run the code check
 	@echo "Running check for the code."
 	@echo "Run make install-docker-buildx"
-	$(MAKE) install-docker-buildx
+	$(MAKE) check-docker-buildx

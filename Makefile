@@ -1,28 +1,5 @@
 include make/*.mk
 
-ARCH := $(shell uname -m)
-LOCAL_ARCH := "amd64"
-ifeq ($(ARCH),x86_64)
-    LOCAL_ARCH="amd64"
-else ifeq ($(ARCH),ppc64le)
-    LOCAL_ARCH="ppc64le"
-else ifeq ($(ARCH),s390x)
-    LOCAL_ARCH="s390x"
-else ifeq ($(ARCH),arm64)
-    LOCAL_ARCH="arm64"
-else
-    $(error "This system's ARCH $(ARCH) isn't recognized/supported")
-endif
-
-OS := $(shell uname)
-ifeq ($(OS),Linux)
-    LOCAL_OS ?= linux
-else ifeq ($(OS),Darwin)
-    LOCAL_OS ?= darwin
-else
-    $(error "This system's OS $(OS) isn't recognized/supported")
-endif
-
 # VERSION defines the project version for the bundle.
 # Update this value when you upgrade the version of your project.
 # To re-generate a bundle for another specific version without changing the standard setup, you can:
