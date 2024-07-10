@@ -1,8 +1,17 @@
-ROOT_DIR ?= $(abspath $(dir $(firstword $(MAKEFILE_LIST))))
+## General
 
-# Local scripts folder used e.g. to store dependencies' installation scripts
+ROOT_DIR ?= $(abspath $(dir $(firstword $(MAKEFILE_LIST))))
+# Local bin folder used 
+LOCAL_BIN_DIR ?= $(ROOT_DIR)/bin
+# Local scripts folder used
 LOCAL_SCRIPTS_DIR ?= $(ROOT_DIR)/scripts
 
+
+# Must be created if doesn't exist, as some targets place dependencies into it
+.PHONY: require-local-bin-dir
+require-local-bin-dir:
+	mkdir -p $(LOCAL_BIN_DIR)
+	
 
 ARCH := $(shell uname -m)
 LOCAL_ARCH := "amd64"
@@ -84,5 +93,5 @@ clean-before-commit:
 .PHONY: check
 check: ## @code Run the code check
 	@echo "Running check for the code."
-	@echo "Run make install-docker-buildx"
+	@echo "Runing require docker buildx as pre-check"
 	$(MAKE) require-docker-buildx

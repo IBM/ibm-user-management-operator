@@ -1,6 +1,6 @@
 # Dependency binaries
-DOCKER_BUILDX ?= $(LOCALBIN)/buildx
-YQ ?= $(LOCALBIN)/yq
+DOCKER_BUILDX ?= $(LOCAL_BIN_DIR)/buildx
+YQ ?= $(LOCAL_BIN_DIR)/yq
 
 # Dependency versions
 DOCKER_BUILDX_VERSION ?= v0.12.1
@@ -24,17 +24,17 @@ require-docker-buildx:
 	@ $(MAKE) check-docker-buildx || $(MAKE) install-docker-buildx
 
 .PHONY: check-docker-buildx
-check-docker-buildx:
+check-docker-buildx: require-local-bin-dir
 	@ echo "Checking dependency: docker buildx"
 	@ $(LOCAL_SCRIPTS_MAKEFILE_CHECK_DIR)/check-docker-buildx.sh $(DOCKER_BUILDX) $(DOCKER_BUILDX_VERSION) $(DOCKER_CLI_PLUGINS)
 	@ echo "Dependency satisfied: docker buildx"
 
 .PHONY: install-docker-buildx
-install-docker-buildx: require-cli-plugins-dir
+install-docker-buildx: require-local-bin-dir require-cli-plugins-dir
 	@ echo "Installing dependency: docker buildx"
 	@ $(LOCAL_SCRIPTS_MAKEFILE_INSTALL_DIR)/install-docker-buildx.sh $(DOCKER_BUILDX) $(DOCKER_BUILDX_VERSION) $(DOCKER_CLI_PLUGINS) $(LOCAL_OS) $(LOCAL_ARCH)
 	@ echo "Dependency installed: docker buildx"
-	@ echo "Checking installation successful: docker buildx"
+	@ echo "Checking if installation successful: docker buildx"
 	@ $(MAKE) check-docker-buildx
 
 
