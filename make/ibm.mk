@@ -85,4 +85,4 @@ clean-before-commit:
 check: ## @code Run the code check
 	@echo "Running check for the code."
 	@echo "Run make install-docker-buildx"
-	$(MAKE) check-docker-buildx
+	$(MAKE) require-docker-buildx
