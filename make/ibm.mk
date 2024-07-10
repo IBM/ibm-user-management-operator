@@ -1,7 +1,6 @@
 DEV_VERSION ?= dev # Could be other string or version number
 DEV_REGISTRY ?= quay.io/bedrockinstallerfid
 
-YQ_VERSION ?= v4.44.1
 
 ifneq ($(shell echo "$(DEV_VERSION)" | grep -E '^[^0-9]'),)
 	TAG := $(DEV_VERSION)
@@ -51,25 +50,10 @@ clean-before-commit:
 	sed -e 's/Always/IfNotPresent/g' ./config/manager/tmp.yaml > ./config/manager/manager.yaml
 	rm ./config/manager/tmp.yaml
 
-# yq is a lightweight and portable command-line YAML processor
-.PHONY: yq
-YQ ?= $(LOCALBIN)/yq
-yq:
-ifeq (,$(wildcard $(YQ)))
-ifeq (, $(shell which yq 2>/dev/null))
-	@{ \
-	set -e ;\
-	mkdir -p $(dir $(YQ)) ;\
-	OS=$(shell go env GOOS) && ARCH=$(shell go env GOARCH) && \
-	curl -sSLo $(YQ) https://github.com/mikefarah/yq/releases/download/$(YQ_VERSION)/yq_$${OS}_$${ARCH} ;\
-	chmod +x $(YQ) ;\
-	}
-else
-YQ = $(shell which yq)
-endif
-endif
 
 # Test
 .PHONY: check
 check: ## @code Run the code check
 	@echo "Running check for the code."
+	@echo "Run make install-docker-buildx"
+	$(MAKE) install-docker-buildx
