@@ -20,4 +20,4 @@ LOCAL_BIN_DIR=$2
 set -ex
 
 # Install with go
-GOBIN=$LOCAL_BIN_DIR go install "sigs.k8s.io/controller-tools/cmd/controller-gen@$CONTROLLER_GEN_VERSION"
+GOSUMDB=off GOBIN=$LOCAL_BIN_DIR go install "sigs.k8s.io/controller-tools/cmd/controller-gen@$CONTROLLER_GEN_VERSION"
