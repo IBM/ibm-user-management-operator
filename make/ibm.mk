@@ -97,5 +97,3 @@ check: ## @code Run the code check
 	@echo "Running check for the code."
 	@echo "Runing require docker buildx as pre-check"
 	$(MAKE) require-docker-buildx
-	@echo "Runing require controller-gen as pre-check"
-	$(MAKE) require-controller-gen
