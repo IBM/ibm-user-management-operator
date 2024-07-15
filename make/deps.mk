@@ -1,9 +1,11 @@
 # Dependency binaries
 DOCKER_BUILDX ?= $(LOCAL_BIN_DIR)/buildx
+CONTROLLER_GEN ?= $(LOCAL_BIN_DIR)/controller-gen
 YQ ?= $(LOCAL_BIN_DIR)/yq
 
 # Dependency versions
 DOCKER_BUILDX_VERSION ?= v0.12.1
+CONTROLLER_GEN_VERSION ?= v0.14.0
 YQ_VERSION ?= v4.44.1
 
 # Dependency check and install scripts, for ease of use
@@ -36,6 +38,27 @@ install-docker-buildx: require-local-bin-dir require-cli-plugins-dir
 	@ echo "Dependency installed: docker buildx"
 	@ echo "Checking if installation successful: docker buildx"
 	@ $(MAKE) check-docker-buildx
+
+
+## Controller-gen
+
+.PHONY: require-controller-gen
+require-controller-gen:
+	@ $(MAKE) check-controller-gen || $(MAKE) install-controller-gen
+
+.PHONY: check-controller-gen
+check-controller-gen: require-local-bin-dir
+	@ echo "Checking dependency: controller-gen"
+	@ $(LOCAL_SCRIPTS_MAKEFILE_CHECK_DIR)/check-controller-gen.sh $(CONTROLLER_GEN) $(CONTROLLER_GEN_VERSION)
+	@ echo "Dependency satisfied: controller-gen"
+
+.PHONY: install-controller-gen
+install-controller-gen: require-local-bin-dir
+	@ echo "Installing dependency: controller-gen"
+	@ $(LOCAL_SCRIPTS_MAKEFILE_INSTALL_DIR)/install-controller-gen.sh $(CONTROLLER_GEN_VERSION) $(LOCAL_BIN_DIR)
+	@ echo "Dependency installed: controller-gen"
+	@ echo "Checking installation successful: controller-gen"
+	@ $(MAKE) check-controller-gen
 
 
 ## YQ is a lightweight and portable command-line YAML processor
