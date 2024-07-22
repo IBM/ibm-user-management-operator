@@ -54,14 +54,15 @@ type BootstrapSecret struct {
 	ClientID            string
 	ClientSecret        string
 	DiscoveryEndpoint   string
-	UserValidationAPIV2 string
 	PGPassword          string
 	DefaultAUDValue     string
 	DefaultIDPValue     string
 	DefaultRealmValue   string
+	SREMCSPGroupsToken  string
 	GlobalRealmValue    string
 	GlobalAccountIDP    string
 	GlobalAccountAud    string
+	UserValidationAPIV2 string
 }
 
 var BootstrapData BootstrapSecret
@@ -73,6 +74,7 @@ var BootstrapData BootstrapSecret
 //+kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=liberty.websphere.ibm.com,resources=webspherelibertyapplications,verbs=get;list;watch;create;update;patch;delete
@@ -113,6 +115,11 @@ func (r *AccountIAMReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	if err := r.reconcileOperandResources(ctx, instance); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	// create im integration job
+	if err := r.configIM(ctx, instance); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -245,9 +252,10 @@ func (r *AccountIAMReconciler) reconcileOperandResources(ctx context.Context, in
 		return err
 	}
 
-	// manifests which need data injected before creation
+	// Manifests which need data injected before creation
 	tmpl := template.New("template bootstrap secrets")
 	var tmplWriter bytes.Buffer
+	// Loop through each secret manifest that requires data injection
 	for _, v := range res.APP_SECRETS {
 		manifest := v
 		tmplWriter.Reset()
@@ -288,6 +296,28 @@ func (r *AccountIAMReconciler) reconcileOperandResources(ctx context.Context, in
 		}
 	}
 
+	return nil
+}
+
+func (r *AccountIAMReconciler) configIM(ctx context.Context, instance *operatorv1alpha1.AccountIAM) error {
+
+	logger := log.FromContext(ctx)
+	logger.Info("Creating IM Config Job")
+	object := &unstructured.Unstructured{}
+	for _, v := range res.IMConfigYamls {
+		manifest := []byte(v)
+		if err := yaml.Unmarshal(manifest, object); err != nil {
+			return err
+		}
+		object.SetNamespace(instance.Namespace)
+		if err := controllerutil.SetControllerReference(instance, object, r.Scheme); err != nil {
+			return err
+		}
+
+		if err := r.createOrUpdate(ctx, object); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
