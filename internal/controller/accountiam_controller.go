@@ -127,9 +127,7 @@ func (r *AccountIAMReconciler) verifyPrereq(ctx context.Context, instance *opera
 	if err != nil {
 		return err
 	}
-	if len(og.Items) != 1 {
-		return errors.New("there should be exactly one OperatorGroup in this namespace")
-	}
+
 	providedApis := og.Items[0].Annotations["olm.providedAPIs"]
 
 	if !strings.Contains(providedApis, "postgresql") {
