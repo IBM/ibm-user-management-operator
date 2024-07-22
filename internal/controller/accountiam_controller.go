@@ -23,6 +23,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"os"
+	"reflect"
 	"strings"
 	"text/template"
 
@@ -63,6 +64,8 @@ type BootstrapSecret struct {
 	GlobalAccountIDP    string
 	GlobalAccountAud    string
 	UserValidationAPIV2 string
+	AccountIAMURL       string
+	AccountIAMNamespace string
 }
 
 var BootstrapData BootstrapSecret
@@ -81,6 +84,7 @@ var BootstrapData BootstrapSecret
 //+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings;roles,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=security.openshift.io,resources=securitycontextconstraints,verbs=use
+//+kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -304,21 +308,51 @@ func (r *AccountIAMReconciler) configIM(ctx context.Context, instance *operatorv
 	logger := log.FromContext(ctx)
 	logger.Info("Creating IM Config Job")
 	object := &unstructured.Unstructured{}
+	var buffer bytes.Buffer
+	decodedData, err := r.decodeData(BootstrapData)
+	if err != nil {
+		return err
+	}
+
 	for _, v := range res.IMConfigYamls {
-		manifest := []byte(v)
-		if err := yaml.Unmarshal(manifest, object); err != nil {
+		manifest := v
+		buffer.Reset()
+
+		t := template.Must(template.New("new IM job").Parse(manifest))
+		if err := t.Execute(&buffer, decodedData); err != nil {
 			return err
 		}
+
+		if err := yaml.Unmarshal(buffer.Bytes(), object); err != nil {
+			return err
+		}
+
 		object.SetNamespace(instance.Namespace)
 		if err := controllerutil.SetControllerReference(instance, object, r.Scheme); err != nil {
 			return err
 		}
+		logger.Info("Creating IM Config object", "v", v)
 
 		if err := r.createOrUpdate(ctx, object); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (r *AccountIAMReconciler) decodeData(data BootstrapSecret) (BootstrapSecret, error) {
+	val := reflect.ValueOf(&data).Elem()
+	for i := 0; i < val.NumField(); i++ {
+		field := val.Field(i)
+		if field.Kind() == reflect.String {
+			decoded, err := base64.StdEncoding.DecodeString(field.String())
+			if err != nil {
+				return data, err
+			}
+			field.SetString(string(decoded))
+		}
+	}
+	return data, nil
 }
 
 func (r *AccountIAMReconciler) createOrUpdate(ctx context.Context, obj *unstructured.Unstructured) error {

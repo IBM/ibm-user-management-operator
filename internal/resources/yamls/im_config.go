@@ -4,6 +4,7 @@ var IMConfigYamls = []string{
 	IM_CONFIG_ROLE,
 	IM_CONFIG_ROLE_BINDING,
 	IM_CONFIG_SA,
+	IM_CONFIG_JOB,
 }
 
 var IM_CONFIG_JOB = `
@@ -21,7 +22,7 @@ spec:
     spec:
       containers:
       - name: mcsp-im-config-job
-        image: docker-na-public.artifactory.swg-devops.com/hyc-cloud-private-scratch-docker-local/ibmcom/mcsp-im-config-job-amd64:16ed094
+        image: docker-na-public.artifactory.swg-devops.com/hyc-cloud-private-scratch-docker-local/ibmcom/mcsp-im-config-job-amd64:5796e4d
         command: ["./mcsp-im-config-job"]
         imagePullPolicy: Always
         securityContext:
@@ -36,11 +37,11 @@ spec:
           - name: LOG_LEVEL
             value: debug
           - name: NAMESPACE
-            value: "mcsp3"
+            value: {{ .AccountIAMNamespace }}
           - name: IM_HOST_URL
-            value: "https://cp-console-mcsp3.apps.cutie1.cp.fyre.ibm.com"
+            value: {{ .DefaultIDPValue }}
           - name: ACCOUNT_IAM_URL
-            value: "https://account-iam-mcsp3.apps.cutie1.cp.fyre.ibm.com"
+            value: {{ .AccountIAMURL }}
       serviceAccountName: mcsp-im-config-sa
       restartPolicy: OnFailure
 `
