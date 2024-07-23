@@ -155,7 +155,7 @@ func (r *AccountIAMReconciler) verifyPrereq(ctx context.Context, instance *opera
 		return err
 	}
 	if !existWebsphere {
-		return errors.New("missing EDB prereq")
+		return errors.New("missing Websphere Liberty prereq")
 	}
 
 	dbPass, err := generatePassword()
