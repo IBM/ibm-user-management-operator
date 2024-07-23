@@ -23,7 +23,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"os"
-	"strings"
 	"text/template"
 
 	corev1 "k8s.io/api/core/v1"
@@ -126,12 +125,6 @@ func (r *AccountIAMReconciler) verifyPrereq(ctx context.Context, instance *opera
 	})
 	if err != nil {
 		return err
-	}
-
-	providedApis := og.Items[0].Annotations["olm.providedAPIs"]
-
-	if !strings.Contains(providedApis, "postgresql") {
-		return errors.New("missing EDB prereq")
 	}
 
 	dbPass, err := generatePassword()
