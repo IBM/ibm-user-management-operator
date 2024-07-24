@@ -41,7 +41,7 @@ import (
 
 	operatorv1alpha1 "github.com/IBM/ibm-user-management-operator/api/v1alpha1"
 	"github.com/IBM/ibm-user-management-operator/internal/resources/common"
-	"github.com/IBM/ibm-user-management-operator/internal/resources"
+	"github.com/IBM/ibm-user-management-operator/internal/resources/constant"
 	res "github.com/IBM/ibm-user-management-operator/internal/resources/yamls"
 	"github.com/ghodss/yaml"
 	olmapi "github.com/operator-framework/api/pkg/operators/v1"
@@ -143,7 +143,7 @@ func (r *AccountIAMReconciler) verifyPrereq(ctx context.Context, instance *opera
 		return err
 	}
 
-	existEDB, err := r.CheckCRD(resources.EDBAPIGroupVersion, resources.EDBClusterKind)
+	existEDB, err := r.CheckCRD(constant.EDBAPIGroupVersion, constant.EDBClusterKind)
 	if err != nil {
 		return err
 	}
@@ -151,7 +151,7 @@ func (r *AccountIAMReconciler) verifyPrereq(ctx context.Context, instance *opera
 		return errors.New("missing EDB prereq")
 	}
 
-	existWebsphere, err := r.CheckCRD(resources.WebSphereAPIGroupVersion, resources.WebSphereKind)
+	existWebsphere, err := r.CheckCRD(constant.WebSphereAPIGroupVersion, constant.WebSphereKind)
 	if err != nil {
 		return err
 	}

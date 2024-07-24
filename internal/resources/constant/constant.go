@@ -14,7 +14,7 @@
 // limitations under the License.
 //
 
-package resources
+package constant
 
 const (
 	// EDBAPIGroupVersion is the api group version of Cluster
