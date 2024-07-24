@@ -255,11 +255,11 @@ spec:
                 - name: OPERATOR_NAME
                   value: ibm-user-management-operator
                 - name: MCSP_UTILS_IMAGE
-                  value: docker-na-public.artifactory.swg-devops.com/hyc-cloud-private-integration-docker-local/ibmcom/mcsp-utils:latest
+                  value: docker-na-public.artifactory.swg-devops.com/hyc-cloud-private-integration-docker-local/ibmcom/mcsp-utils:20240724
                 - name: ACCOUNT_IAM_APP_IMAGE
-                  value: docker-na-public.artifactory.swg-devops.com/hyc-cloud-private-scratch-docker-local/ibmcom/account-iam-amd64:20240722
+                  value: docker-na-public.artifactory.swg-devops.com/hyc-cloud-private-integration-docker-local/ibmcom/account-iam:20240724
                 - name: IM_CONFIG_JOB_IMAGE
-                  value: docker-na-public.artifactory.swg-devops.com/hyc-cloud-private-scratch-docker-local/ibmcom/mcsp-im-config-job-amd64:5796e4d
+                  value: docker-na-public.artifactory.swg-devops.com/hyc-cloud-private-integration-docker-local/ibmcom/mcsp-im-config-job:20240724
                 image: icr.io/cpopen/ibm-user-management-operator:latest
                 imagePullPolicy: Always
                 livenessProbe:

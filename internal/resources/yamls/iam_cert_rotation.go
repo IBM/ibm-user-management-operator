@@ -87,7 +87,7 @@ spec:
           imagePullPolicy: Always
           terminationMessagePolicy: File
           image: >-
-            docker-na-public.artifactory.swg-devops.com/hyc-cloud-private-integration-docker-local/ibmcom/iam-cert-rotation:latest
+            docker-na-public.artifactory.swg-devops.com/hyc-cloud-private-integration-docker-local/ibmcom/iam-cert-rotation:20240724
       serviceAccount: msp-iam-cert-rotation-sa
       dnsPolicy: ClusterFirst
   strategy:
