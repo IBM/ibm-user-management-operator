@@ -12,7 +12,7 @@ spec:
     spec:
       containers:
       - name: postgres
-        image: docker-na-public.artifactory.swg-devops.com/hyc-cloud-private-integration-docker-local/ibmcom/mcsp-utils:latest
+        image: CREATE_ACCOUNT_IAM_DB_IMAGE
         command: ["/bin/bash", "/db-init/create_db.sh"]
         volumeMounts:
         - name: psql-credentials

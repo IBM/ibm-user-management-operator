@@ -38,6 +38,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	operatorv1alpha1 "github.com/IBM/ibm-user-management-operator/api/v1alpha1"
+	"github.com/IBM/ibm-user-management-operator/internal/resources/common"
 	res "github.com/IBM/ibm-user-management-operator/internal/resources/yamls"
 	"github.com/ghodss/yaml"
 	olmapi "github.com/operator-framework/api/pkg/operators/v1"
@@ -211,7 +212,8 @@ func (r *AccountIAMReconciler) cleanJob(ctx context.Context, ns string) error {
 	}
 
 	object = &unstructured.Unstructured{}
-	manifest = []byte(res.DB_BOOTSTRAP_JOB)
+	resource := common.ReplaceImages(res.DB_BOOTSTRAP_JOB)
+	manifest = []byte(resource)
 	if err := yaml.Unmarshal(manifest, object); err != nil {
 		return err
 	}
@@ -231,7 +233,8 @@ func (r *AccountIAMReconciler) reconcileOperandResources(ctx context.Context, in
 
 	// TODO: will need to find a better place to initialize the database
 	object := &unstructured.Unstructured{}
-	manifest := []byte(res.DB_BOOTSTRAP_JOB)
+	resource := common.ReplaceImages(res.DB_BOOTSTRAP_JOB)
+	manifest := []byte(resource)
 	if err := yaml.Unmarshal(manifest, object); err != nil {
 		return err
 	}
@@ -274,6 +277,9 @@ func (r *AccountIAMReconciler) reconcileOperandResources(ctx context.Context, in
 	// static manifests which do not change
 	staticYamls := append(res.APP_STATIC_YAMLS, res.CertRotationYamls...)
 	for _, v := range staticYamls {
+		// update yaml with image
+		v = common.ReplaceImages(v)
+		// create object
 		manifest := []byte(v)
 		if err := yaml.Unmarshal(manifest, object); err != nil {
 			return err
@@ -302,7 +308,8 @@ func (r *AccountIAMReconciler) configIM(ctx context.Context, instance *operatorv
 	}
 
 	for _, v := range res.IMConfigYamls {
-		manifest := v
+		resource := common.ReplaceImages(v)
+		manifest := resource
 		buffer.Reset()
 
 		t := template.Must(template.New("new IM job").Parse(manifest))
