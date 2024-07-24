@@ -78,7 +78,7 @@ spec:
         - name: MCSP_UTILS_IMAGE
           value: docker-na-public.artifactory.swg-devops.com/hyc-cloud-private-integration-docker-local/ibmcom/mcsp-utils:latest
         - name: ACCOUNT_IAM_APP_IMAGE
-          value: docker-na-public.artifactory.swg-devops.com/hyc-cloud-private-integration-docker-local/ibmcom/account-iam:20240724
+          value: docker-na-public.artifactory.swg-devops.com/hyc-cloud-private-integration-docker-local/ibmcom/account-iam:20240704015703-development-a5addf36327e2d6b43cb0a96d1e34f707d3433e0
         - name: IM_CONFIG_JOB_IMAGE
           value: docker-na-public.artifactory.swg-devops.com/hyc-cloud-private-integration-docker-local/ibmcom/mcsp-im-config-job:latest
         args:
