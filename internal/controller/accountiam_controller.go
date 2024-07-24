@@ -40,8 +40,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	operatorv1alpha1 "github.com/IBM/ibm-user-management-operator/api/v1alpha1"
-	"github.com/IBM/ibm-user-management-operator/internal/resources/common"
-	"github.com/IBM/ibm-user-management-operator/internal/resources/constant"
+	common "github.com/IBM/ibm-user-management-operator/internal/resources/common"
+	constant "github.com/IBM/ibm-user-management-operator/internal/resources/constant"
 	res "github.com/IBM/ibm-user-management-operator/internal/resources/yamls"
 	"github.com/ghodss/yaml"
 	olmapi "github.com/operator-framework/api/pkg/operators/v1"
