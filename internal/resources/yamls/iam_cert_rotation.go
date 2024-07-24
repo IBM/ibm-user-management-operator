@@ -87,7 +87,7 @@ spec:
           imagePullPolicy: Always
           terminationMessagePolicy: File
           image: >-
-            icr.io/automation-saas-platform/access-management/iam-cert-rotation:20240306103454-main-86f22aa63ce252c4add52c8c7bf11ff24c430764
+            docker-na-public.artifactory.swg-devops.com/hyc-cloud-private-integration-docker-local/ibmcom/iam-cert-rotation:latest
       serviceAccount: msp-iam-cert-rotation-sa
       dnsPolicy: ClusterFirst
   strategy:
