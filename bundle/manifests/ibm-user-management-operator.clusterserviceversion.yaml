@@ -252,6 +252,14 @@ spec:
                   valueFrom:
                     fieldRef:
                       fieldPath: metadata.annotations['olm.targetNamespaces']
+                - name: OPERATOR_NAME
+                  value: ibm-user-management-operator
+                - name: MCSP_UTILS_IMAGE
+                  value: docker-na-public.artifactory.swg-devops.com/hyc-cloud-private-integration-docker-local/ibmcom/mcsp-utils:latest
+                - name: ACCOUNT_IAM_APP_IMAGE
+                  value: docker-na-public.artifactory.swg-devops.com/hyc-cloud-private-scratch-docker-local/ibmcom/account-iam-amd64:20240722
+                - name: IM_CONFIG_JOB_IMAGE
+                  value: docker-na-public.artifactory.swg-devops.com/hyc-cloud-private-scratch-docker-local/ibmcom/mcsp-im-config-job-amd64:5796e4d
                 image: icr.io/cpopen/ibm-user-management-operator:latest
                 imagePullPolicy: Always
                 livenessProbe:

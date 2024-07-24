@@ -12,7 +12,7 @@ spec:
     spec:
       containers:
       - name: postgres
-        image: CREATE_ACCOUNT_IAM_DB_IMAGE
+        image: MCSP_UTILS_IMAGE
         command: ["/bin/bash", "/db-init/create_db.sh"]
         volumeMounts:
         - name: psql-credentials

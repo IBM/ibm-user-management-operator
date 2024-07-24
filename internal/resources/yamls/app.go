@@ -231,7 +231,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: dbmigrate
-          image: DB_MIGRATION_MCSPID_IMAGE
+          image: ACCOUNT_IAM_APP_IMAGE
           envFrom:
             - secretRef:
                 name: account-iam-database-secret
