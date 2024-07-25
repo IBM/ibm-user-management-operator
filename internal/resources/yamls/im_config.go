@@ -39,7 +39,7 @@ spec:
           - name: NAMESPACE
             value: {{ .AccountIAMNamespace }}
           - name: IM_HOST_URL
-            value: {{ .DefaultIDPValue }}
+            value: {{ .IAMHOSTURL }}
           - name: ACCOUNT_IAM_URL
             value: {{ .AccountIAMURL }}
       serviceAccountName: mcsp-im-config-sa
@@ -68,7 +68,6 @@ rules:
     verbs: ["get", "list", "watch"]
   - apiGroups: [""]
     resources: ["secrets"]
-    resourceNames: ["mcsp-im-integration-api-key"]
     verbs: ["create", "update", "delete"]
 `
 
