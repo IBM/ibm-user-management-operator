@@ -433,7 +433,7 @@ func (r *AccountIAMReconciler) configIM(ctx context.Context, instance *operatorv
 
 	if err := r.InjectData(ctx, instance, res.IMConfigYamls, decodedData); err != nil {
 		return err
-	
+	}
 
 	return nil
 }
@@ -448,7 +448,7 @@ func (r *AccountIAMReconciler) InjectData(ctx context.Context, instance *operato
 		buffer.Reset()
 
 		// Parse the manifest template and execute it with the provided bootstrap data
-    manifest = common.ReplaceImages(manifest)
+		manifest = common.ReplaceImages(manifest)
 		t := template.Must(template.New("template resrouces").Parse(manifest))
 		if err := t.Execute(&buffer, bootstrapData); err != nil {
 			return err
