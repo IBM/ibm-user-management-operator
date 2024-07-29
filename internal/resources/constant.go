@@ -17,6 +17,14 @@
 package resources
 
 const (
+	// Default User Management CR
+	UserMgmtCR = "AccountIAM"
+	// Default OperandRequest
+	UserMgmtOpreq = "user-management-request"
+	// OpreqKind is the kind of OperandConfig
+	OpreqKind = "OperandRequest"
+	// OperandStatusRedy is the Ready status of Operand
+	OperandStatusRedy = "Ready"
 	// EDBAPIGroupVersion is the api group version of Cluster
 	EDBAPIGroupVersion = "postgresql.k8s.enterprisedb.io/v1"
 	// EDBClusterKind is the kind of Cluster
