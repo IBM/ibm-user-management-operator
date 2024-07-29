@@ -180,10 +180,6 @@ func (r *AccountIAMReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, err
 	}
 
-	if err := r.waitForJob(ctx, instance.Namespace, "mcsp-im-config-job"); err != nil {
-		return ctrl.Result{}, err
-	}
-
 	if err := r.reconcileUI(ctx, instance); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -345,6 +341,25 @@ func (r *AccountIAMReconciler) CheckCRD(apiGroupVersion string, kind string) (bo
 	return true, nil
 }
 
+// ResourceExists returns true if the given resource kind exists
+// in the given api groupversion
+func (r *AccountIAMReconciler) ResourceExists(dc discovery.DiscoveryInterface, apiGroupVersion, kind string) (bool, error) {
+	_, apiLists, err := dc.ServerGroupsAndResources()
+	if err != nil {
+		return false, err
+	}
+	for _, apiList := range apiLists {
+		if apiList.GroupVersion == apiGroupVersion {
+			for _, r := range apiList.APIResources {
+				if r.Kind == kind {
+					return true, nil
+				}
+			}
+		}
+	}
+	return false, nil
+}
+
 func generatePassword() ([]byte, error) {
 	random := make([]byte, 20)
 	_, err := rand.Read(random)
@@ -453,9 +468,9 @@ func (r *AccountIAMReconciler) cleanJob(ctx context.Context, ns string) error {
 	return nil
 }
 
-// -------------- verifyPrereq functions done --------------
+// -------------- verifyPrereq helper functions done --------------
 
-// -------------- Reconcile resources functions --------------
+// -------------- Reconcile resources helper functions --------------
 func (r *AccountIAMReconciler) reconcileOperandResources(ctx context.Context, instance *operatorv1alpha1.AccountIAM) error {
 
 	// TODO: will need to find a better place to initialize the database
@@ -629,7 +644,61 @@ func (r *AccountIAMReconciler) restartAndCheckPod(ctx context.Context, ns, label
 	return nil
 }
 
-// -------------- Reconcile resources functions done --------------
+func (r *AccountIAMReconciler) getPodName(ctx context.Context, namespace, label string) (string, error) {
+	podList := &corev1.PodList{}
+	labelSelector := labels.SelectorFromSet(labels.Set{"app": label})
+
+	if err := r.Client.List(ctx, podList, &client.ListOptions{
+		Namespace:     namespace,
+		LabelSelector: labelSelector,
+	}); err != nil {
+		return "", err
+	}
+
+	if len(podList.Items) == 0 {
+		return "", fmt.Errorf("No pod found with label %s in namespace %s", labelSelector, namespace)
+	}
+	return podList.Items[0].Name, nil
+}
+
+func (r *AccountIAMReconciler) waitForDeploymentReady(ctx context.Context, ns, label string) error {
+
+	return wait.PollImmediate(20*time.Second, 10*time.Minute, func() (bool, error) {
+		deployments := &appsv1.DeploymentList{}
+
+		if err := r.List(ctx, deployments, &client.ListOptions{Namespace: ns}); err != nil {
+			klog.V(2).ErrorS(err, "Failed to get deployment", "deployment", label)
+			return false, nil
+		}
+
+		var matchedDeployment *appsv1.Deployment
+		for _, deployment := range deployments.Items {
+			if strings.HasPrefix(deployment.Name, label) {
+				matchedDeployment = &deployment
+				break
+			}
+		}
+
+		if matchedDeployment == nil {
+			klog.Infof("No deployment found with prefix %s in namespace %s", label, ns)
+			return false, nil
+		}
+
+		klog.Infof("Waiting for Deployment %s to be ready...", label)
+
+		desiredReplicas := *matchedDeployment.Spec.Replicas
+		readyReplicas := matchedDeployment.Status.ReadyReplicas
+
+		if readyReplicas == desiredReplicas {
+			klog.Infof("Deployment %s is ready with %d/%d replicas.", label, readyReplicas, desiredReplicas)
+			return true, nil
+		}
+
+		return false, nil
+	})
+}
+
+// -------------- Reconcile resources helper functions done --------------
 
 // -------------- Config IM functions --------------
 
@@ -655,7 +724,30 @@ func (r *AccountIAMReconciler) configIM(ctx context.Context, instance *operatorv
 		return err
 	}
 
+	if err := r.waitForJob(ctx, instance.Namespace, resources.IMConfigJob); err != nil {
+		return err
+	}
+
 	return nil
+}
+
+func (r *AccountIAMReconciler) waitForJob(ctx context.Context, ns, name string) error {
+
+	return wait.PollImmediate(20*time.Second, 2*time.Minute, func() (bool, error) {
+		job := &batchv1.Job{}
+		if err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: ns}, job); err != nil {
+			klog.Errorf("failed to get job %s in namespace %s: %v", name, ns, err)
+			return false, err
+		}
+
+		klog.Infof("Waiting for Job %s to be ready...", name)
+
+		if job.Status.Succeeded > 0 {
+			return true, nil
+		}
+
+		return false, nil
+	})
 }
 
 // -------------- Config IM functions done --------------
@@ -771,98 +863,6 @@ func (r *AccountIAMReconciler) initUIBootstrapData(ctx context.Context, instance
 }
 
 // -------------- Reconcile UI functions done --------------
-
-// ResourceExists returns true if the given resource kind exists
-// in the given api groupversion
-func (r *AccountIAMReconciler) ResourceExists(dc discovery.DiscoveryInterface, apiGroupVersion, kind string) (bool, error) {
-	_, apiLists, err := dc.ServerGroupsAndResources()
-	if err != nil {
-		return false, err
-	}
-	for _, apiList := range apiLists {
-		if apiList.GroupVersion == apiGroupVersion {
-			for _, r := range apiList.APIResources {
-				if r.Kind == kind {
-					return true, nil
-				}
-			}
-		}
-	}
-	return false, nil
-}
-
-func (r *AccountIAMReconciler) getPodName(ctx context.Context, namespace, label string) (string, error) {
-	podList := &corev1.PodList{}
-	labelSelector := labels.SelectorFromSet(labels.Set{"app": label})
-
-	if err := r.Client.List(ctx, podList, &client.ListOptions{
-		Namespace:     namespace,
-		LabelSelector: labelSelector,
-	}); err != nil {
-		return "", err
-	}
-
-	if len(podList.Items) == 0 {
-		return "", fmt.Errorf("No pod found with label %s in namespace %s", labelSelector, namespace)
-	}
-	return podList.Items[0].Name, nil
-}
-
-func (r *AccountIAMReconciler) waitForDeploymentReady(ctx context.Context, ns, label string) error {
-
-	return wait.PollImmediate(20*time.Second, 10*time.Minute, func() (bool, error) {
-		deployments := &appsv1.DeploymentList{}
-
-		if err := r.List(ctx, deployments, &client.ListOptions{Namespace: ns}); err != nil {
-			klog.V(2).ErrorS(err, "Failed to get deployment", "deployment", label)
-			return false, nil
-		}
-
-		var matchedDeployment *appsv1.Deployment
-		for _, deployment := range deployments.Items {
-			if strings.HasPrefix(deployment.Name, label) {
-				matchedDeployment = &deployment
-				break
-			}
-		}
-
-		if matchedDeployment == nil {
-			klog.Infof("No deployment found with prefix %s in namespace %s", label, ns)
-			return false, nil
-		}
-
-		klog.Infof("Waiting for Deployment %s to be ready...", label)
-
-		desiredReplicas := *matchedDeployment.Spec.Replicas
-		readyReplicas := matchedDeployment.Status.ReadyReplicas
-
-		if readyReplicas == desiredReplicas {
-			klog.Infof("Deployment %s is ready with %d/%d replicas.", label, readyReplicas, desiredReplicas)
-			return true, nil
-		}
-
-		return false, nil
-	})
-}
-
-func (r *AccountIAMReconciler) waitForJob(ctx context.Context, ns, name string) error {
-
-	return wait.PollImmediate(20*time.Second, 2*time.Minute, func() (bool, error) {
-		job := &batchv1.Job{}
-		if err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: ns}, job); err != nil {
-			klog.Errorf("failed to get job %s in namespace %s: %v", name, ns, err)
-			return false, err
-		}
-
-		klog.Infof("Waiting for Job %s to be ready...", name)
-
-		if job.Status.Succeeded > 0 {
-			return true, nil
-		}
-
-		return false, nil
-	})
-}
 
 func (r *AccountIAMReconciler) createOrUpdate(ctx context.Context, obj *unstructured.Unstructured) error {
 	// err := r.Update(ctx, obj)

@@ -33,4 +33,6 @@ const (
 	WebSphereAPIGroupVersion = "liberty.websphere.ibm.com/v1"
 	// WebSphereKind is the kind of WebSphereLibertyApplication
 	WebSphereKind = "WebSphereLibertyApplication"
+	// IMConfigJob is the name of the IM configuration job
+	IMConfigJob = "mcsp-im-config-job"
 )
