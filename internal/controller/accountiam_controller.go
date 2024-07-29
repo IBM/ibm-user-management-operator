@@ -25,10 +25,13 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"strings"
 	"text/template"
 	"time"
 
 	ocproute "github.com/openshift/api/route/v1"
+	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -43,6 +46,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	operatorv1alpha1 "github.com/IBM/ibm-user-management-operator/api/v1alpha1"
 	common "github.com/IBM/ibm-user-management-operator/internal/resources/common"
@@ -80,6 +84,42 @@ type BootstrapSecret struct {
 
 var BootstrapData BootstrapSecret
 
+type UIBootstrapTemplate struct {
+	Hostname                    string
+	InstanceManagementHostname  string
+	NodeEnv                     string
+	CertDir                     string
+	ConfigEnv                   string
+	RedisHost                   string
+	AccountAPI                  string
+	ProductAPI                  string
+	MeteringAPI                 string
+	InstanceAPI                 string
+	IssuerBaseURL               string
+	SubscriptionAPI             string
+	APIOAUTHTokenURL            string
+	RedisCA                     string
+	ClientID                    string
+	ClientSecret                string
+	DisableRedis                string
+	SessionSecret               string
+	DeploymentCloud             string
+	IAMGlobalAPIKey             string
+	APIOAUTHClientID            string
+	APIOAUTHClientSecret        string
+	IAMAPI                      string
+	MyIBMURL                    string
+	AWSProvisioningURL          string
+	IBMCloudProvisioningURL     string
+	ProductRegistrationUsername string
+	ProductRegistrationPassword string
+	IMIDMgmt                    string
+	CSIDPURL                    string
+	OnPremAccount               string
+}
+
+var UIBootstrapData UIBootstrapTemplate
+
 //+kubebuilder:rbac:groups=operator.ibm.com,resources=accountiams,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=operator.ibm.com,resources=accountiams/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=operator.ibm.com,resources=accountiams/finalizers,verbs=update
@@ -95,6 +135,9 @@ var BootstrapData BootstrapSecret
 //+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings;roles,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=security.openshift.io,resources=securitycontextconstraints,verbs=use
+//+kubebuilder:rbac:groups=cert-manager.io,resources=issuers;certificates,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
@@ -134,6 +177,14 @@ func (r *AccountIAMReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	// create im integration job
 	if err := r.configIM(ctx, instance); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	if err := r.waitForJob(ctx, instance.Namespace, "mcsp-im-config-job"); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	if err := r.reconcileUI(ctx, instance); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -312,6 +363,63 @@ func (r *AccountIAMReconciler) cleanJob(ctx context.Context, ns string) error {
 	return nil
 }
 
+func (r *AccountIAMReconciler) initUIBootstrapData(ctx context.Context, instance *operatorv1alpha1.AccountIAM) error {
+	clusterInfo := &corev1.ConfigMap{}
+	if err := r.Get(ctx, types.NamespacedName{Namespace: instance.Namespace, Name: "ibmcloud-cluster-info"}, clusterInfo); err != nil {
+		return err
+	}
+	if _, ok := clusterInfo.Data["cluster_kube_apiserver_host"]; !ok {
+		return errors.New("configmap ibmcloud-cluster-info missing field 'cluster_kube_apiserver_host'")
+	}
+	cpconsole, ok := clusterInfo.Data["cluster_endpoint"]
+	if !ok {
+		return errors.New("configmap ibmcloud-cluster-info missing field 'cluster_endpoint'")
+	}
+	parsing := strings.Split(clusterInfo.Data["cluster_kube_apiserver_host"], ".")
+	domain := strings.Join(parsing[1:], ".")
+	log.Log.Info("", "domain: ", domain)
+
+	apiKeySecret := &corev1.Secret{}
+	if err := r.Get(ctx, types.NamespacedName{Namespace: instance.Namespace, Name: "mcsp-im-integration-api-key"}, apiKeySecret); err != nil {
+		return errors.New("missing secret for API key, 'mcsp-im-integration-api-key'")
+	}
+	apiKey, ok := apiKeySecret.Data["API_KEY"]
+	if !ok {
+		return errors.New("secret for API key, 'mcsp-im-integration-api-key', missing API_KEY field")
+	}
+
+	decodedClientID, err := base64.StdEncoding.DecodeString(BootstrapData.ClientID)
+	if err != nil {
+		return err
+	}
+	decodedClientSecret, err := base64.StdEncoding.DecodeString(BootstrapData.ClientSecret)
+	if err != nil {
+		return err
+	}
+
+	UIBootstrapData = UIBootstrapTemplate{
+		Hostname:                   concat("account-iam-ui-inst-", instance.Namespace, ".apps.", domain),
+		InstanceManagementHostname: concat("account-iam-ui-inst-", instance.Namespace, ".apps.", domain),
+		ClientID:                   string(decodedClientID),
+		ClientSecret:               string(decodedClientSecret),
+		IAMGlobalAPIKey:            string(apiKey),
+		RedisHost:                  "placeholder value until onprem Redis integration done",
+		RedisCA:                    "placeholder value until onprem Redis integration done",
+		SessionSecret:              "placeholder value because we do not know what this is for yet",
+		DeploymentCloud:            "IBM_CLOUD",
+		IAMAPI:                     concat("https://account-iam-", instance.Namespace, ".apps.", domain),
+		NodeEnv:                    "production",
+		CertDir:                    "../../security",
+		ConfigEnv:                  "dev",
+		IssuerBaseURL:              concat(cpconsole, "/idprovider/v1/auth"),
+		IMIDMgmt:                   cpconsole,
+		CSIDPURL:                   concat(cpconsole, "/common-nav/identity-access/realms"),
+		OnPremAccount:              "mcsp-im-intgn-account",
+	}
+
+	return nil
+}
+
 func (r *AccountIAMReconciler) reconcileOperandResources(ctx context.Context, instance *operatorv1alpha1.AccountIAM) error {
 
 	// TODO: will need to find a better place to initialize the database
@@ -438,6 +546,57 @@ func (r *AccountIAMReconciler) configIM(ctx context.Context, instance *operatorv
 	return nil
 }
 
+func (r *AccountIAMReconciler) reconcileUI(ctx context.Context, instance *operatorv1alpha1.AccountIAM) error {
+	if err := r.initUIBootstrapData(ctx, instance); err != nil {
+		return err
+	}
+
+	// Manifests which need data injected before creation
+	object := &unstructured.Unstructured{}
+	tmpl := template.New("template for injecting data into YAMLs")
+	var tmplWriter bytes.Buffer
+	for _, v := range res.TemplateYamlsUI {
+		manifest := v
+		tmplWriter.Reset()
+
+		tmpl, err := tmpl.Parse(manifest)
+		if err != nil {
+			return err
+		}
+		if err := tmpl.Execute(&tmplWriter, UIBootstrapData); err != nil {
+			return err
+		}
+
+		if err := yaml.Unmarshal(tmplWriter.Bytes(), object); err != nil {
+			return err
+		}
+		object.SetNamespace(instance.Namespace)
+		if err := controllerutil.SetControllerReference(instance, object, r.Scheme); err != nil {
+			return err
+		}
+		if err := r.createOrUpdate(ctx, object); err != nil {
+			return err
+		}
+	}
+
+	for _, v := range res.StaticYamlsUI {
+		object := &unstructured.Unstructured{}
+		manifest := []byte(v)
+		if err := yaml.Unmarshal(manifest, object); err != nil {
+			return err
+		}
+		object.SetNamespace(instance.Namespace)
+		if err := controllerutil.SetControllerReference(instance, object, r.Scheme); err != nil {
+			return err
+		}
+		if err := r.createOrUpdate(ctx, object); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (r *AccountIAMReconciler) InjectData(ctx context.Context, instance *operatorv1alpha1.AccountIAM, manifests []string, bootstrapData BootstrapSecret) error {
 
 	var buffer bytes.Buffer
@@ -540,7 +699,7 @@ func (r *AccountIAMReconciler) restartAndCheckPod(ctx context.Context, ns, label
 
 	time.Sleep(10 * time.Second)
 
-	if err := r.waitForPodReady(ctx, ns, label); err != nil {
+	if err := r.waitForDeploymentReady(ctx, ns, label); err != nil {
 		return err
 	}
 
@@ -564,23 +723,42 @@ func (r *AccountIAMReconciler) getPodName(ctx context.Context, namespace, label 
 	return podList.Items[0].Name, nil
 }
 
-func (r *AccountIAMReconciler) waitForPodReady(ctx context.Context, ns, label string) error {
+func (r *AccountIAMReconciler) waitForDeploymentReady(ctx context.Context, ns, label string) error {
 
 	return wait.PollImmediate(20*time.Second, 2*time.Minute, func() (bool, error) {
-		pod, err := r.getPodName(ctx, ns, label)
-		if err != nil {
-			return false, err
-		}
-		podName := &corev1.Pod{}
-		if err := r.Get(ctx, client.ObjectKey{Name: pod, Namespace: ns}, podName); err != nil {
+		deployment := &appsv1.Deployment{}
+		if err := r.Get(ctx, client.ObjectKey{Name: label, Namespace: ns}, deployment); err != nil {
+			klog.Errorf("Failed to get deployment %s in namespace %s: %v", label, ns, err)
 			return false, err
 		}
 
-		for _, cond := range podName.Status.Conditions {
-			klog.Infof("Waiting Pod %s to be ready...", pod)
-			if cond.Type == corev1.PodReady && cond.Status == corev1.ConditionTrue {
-				return true, nil
-			}
+		klog.Infof("Waiting for Deployment %s to be ready...", label)
+
+		desiredReplicas := *deployment.Spec.Replicas
+		readyReplicas := deployment.Status.ReadyReplicas
+
+		if readyReplicas == desiredReplicas {
+			klog.Infof("Deployment %s is ready with %d/%d replicas.", label, readyReplicas, desiredReplicas)
+			return true, nil
+		}
+
+		return false, nil
+	})
+}
+
+func (r *AccountIAMReconciler) waitForJob(ctx context.Context, ns, name string) error {
+
+	return wait.PollImmediate(20*time.Second, 2*time.Minute, func() (bool, error) {
+		job := &batchv1.Job{}
+		if err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: ns}, job); err != nil {
+			klog.Errorf("failed to get job %s in namespace %s: %v", name, ns, err)
+			return false, err
+		}
+
+		klog.Infof("Waiting for Job %s to be ready...", name)
+
+		if job.Status.Succeeded > 0 {
+			return true, nil
 		}
 
 		return false, nil
