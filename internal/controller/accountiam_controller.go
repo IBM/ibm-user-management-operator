@@ -198,12 +198,18 @@ func (r *AccountIAMReconciler) verifyPrereq(ctx context.Context, instance *opera
 		return err
 	}
 
-	// Request IM operator and wait for its status
-	if err := r.createOperandRequest(ctx, resources.UserMgmtOpreq, instance.Namespace, []string{"ibm-im-operator"}); err != nil {
+	operatorNames := []string{resources.WebSpherePackage, resources.IMPackage}
+
+	// Request WebSphere, IM operator and wait for their status
+	if err := r.createOperandRequest(ctx, resources.UserMgmtOpreq, instance.Namespace, operatorNames); err != nil {
 		return err
 	}
 
-	if err := r.waitForOperatorReady(ctx, instance.Namespace, resources.UserMgmtOpreq, "ibm-im-operator", resources.OperandStatusRedy); err != nil {
+	// if err := r.waitForOperatorReady(ctx, instance.Namespace, resources.UserMgmtOpreq, resources.WebSpherePackage, resources.OperandStatusRedy); err != nil {
+	// 	return err
+	// }
+
+	if err := r.waitForOperatorReady(ctx, instance.Namespace, resources.UserMgmtOpreq, resources.IMPackage, resources.OperandStatusRedy); err != nil {
 		return err
 	}
 
