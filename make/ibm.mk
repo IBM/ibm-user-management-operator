@@ -75,26 +75,26 @@ configure-dev:
 	$(eval IMG := $(DEV_IMG))
 	$(eval BUNDLE_IMG := $(DEV_BUNDLE_IMG))
 	$(eval CATALOG_IMG := $(DEV_CATALOG_IMG))
-	$(MAKE) bundle
+	$(MAKE) bundle IMG=$(IMG)
 	
 ##@ Development Build
 .PHONY: docker-build-dev
 docker-build-dev: configure-dev docker-build 
 
 .PHONY: docker-build-push-dev
-docker-build-push-dev: docker-build-dev docker-push
+docker-build-push-dev: configure-dev docker-build-dev docker-push
 
 .PHONY: bundle-build-dev
 bundle-build-dev: configure-dev bundle-build
 
 .PHONY: bundle-build-push-dev
-bundle-build-push-dev: bundle-build-dev bundle-push
+bundle-build-push-dev: configure-dev bundle-build-dev bundle-push
 
 .PHONY: catalog-build-dev
 catalog-build-dev: configure-dev catalog-build
 
 .PHONY: catalog-build-push-dev
-catalog-build-push-dev: catalog-build-dev catalog-push
+catalog-build-push-dev: configure-dev catalog-build-dev catalog-push
 
 ##@ Production Build
 .PHONY: docker-build-prod

@@ -24,7 +24,7 @@ metadata:
     categories: Security
     certified: "false"
     containerImage: icr.io/cpopen/ibm-user-management-operator:latest
-    createdAt: "2024-07-26T18:22:17Z"
+    createdAt: "2024-07-29T18:37:34Z"
     description: Operator for managing deployment of account-iam service.
     nss.operator.ibm.com/managed-operators: ibm-user-management-operator
     olm.skipRange: <0.0.0
@@ -103,6 +103,18 @@ spec:
           - update
           - watch
         - apiGroups:
+          - ""
+          resources:
+          - services
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
           - apps
           resources:
           - deployments
@@ -127,6 +139,19 @@ spec:
           - update
           - watch
         - apiGroups:
+          - cert-manager.io
+          resources:
+          - certificates
+          - issuers
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
           - coordination.k8s.io
           resources:
           - leases
@@ -142,6 +167,18 @@ spec:
           - liberty.websphere.ibm.com
           resources:
           - webspherelibertyapplications
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - networking.k8s.io
+          resources:
+          - ingresses
           verbs:
           - create
           - delete
@@ -188,6 +225,15 @@ spec:
           - get
           - patch
           - update
+        - apiGroups:
+          - operator.ibm.com
+          resources:
+          - operandrequests
+          verbs:
+          - create
+          - get
+          - list
+          - watch
         - apiGroups:
           - operators.coreos.com
           resources:
