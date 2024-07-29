@@ -580,6 +580,7 @@ func (r *AccountIAMReconciler) reconcileUI(ctx context.Context, instance *operat
 	}
 
 	for _, v := range res.StaticYamlsUI {
+		v = common.ReplaceImages(v)
 		object := &unstructured.Unstructured{}
 		manifest := []byte(v)
 		if err := yaml.Unmarshal(manifest, object); err != nil {
