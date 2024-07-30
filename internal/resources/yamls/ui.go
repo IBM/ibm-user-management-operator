@@ -330,7 +330,7 @@ spec:
     spec:
       containers:
         - name: 'account-iam-ui-api-service-onprem-api'
-          image: ACCOUNT_IAM_UI_API_SERVICE_IMAGE
+          image: ACCOUNT_IAM_UI_API_SERVICE
           imagePullPolicy: Always
           ports:
             - containerPort: 3000
@@ -500,7 +500,7 @@ spec:
     spec:
       containers:
         - name: 'account-iam-ui-instance-service-onprem-instance'
-          image: ACCOUNT_IAM_UI_INSTANCE_SERVICE_IMAGE
+          image: ACCOUNT_IAM_UI_INSTANCE_SERVICE
           imagePullPolicy: Always
           ports:
             - containerPort: 3005

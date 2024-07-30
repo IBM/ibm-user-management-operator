@@ -231,7 +231,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: dbmigrate
-          image: ACCOUNT_IAM_APP_IMAGE
+          image: ACCOUNT_IAM_APP
           envFrom:
             - secretRef:
                 name: account-iam-database-secret
@@ -304,7 +304,7 @@ spec:
   manageTLS: true
   networkPolicy:
     disable: true
-  applicationImage: ACCOUNT_IAM_APP_IMAGE
+  applicationImage: ACCOUNT_IAM_APP
   pullPolicy: Always
   replicas: 
   probes:

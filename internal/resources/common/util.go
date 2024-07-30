@@ -6,7 +6,7 @@ import (
 )
 
 var (
-	ImageList = []string{"MCSP_UTILS_IMAGE", "ACCOUNT_IAM_APP_IMAGE", "IM_CONFIG_JOB_IMAGE", "ACCOUNT_IAM_UI_INSTANCE_SERVICE_IMAGE", "ACCOUNT_IAM_UI_API_SERVICE_IMAGE"}
+	ImageList = []string{"MCSP_UTILS", "ACCOUNT_IAM_APP", "IM_CONFIG_JOB", "ACCOUNT_IAM_UI_INSTANCE_SERVICE", "ACCOUNT_IAM_UI_API_SERVICE"}
 )
 
 func ReplaceImages(resource string) (result string) {
