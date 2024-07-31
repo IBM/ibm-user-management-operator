@@ -19,7 +19,6 @@ package controller
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -30,8 +29,6 @@ import (
 	"time"
 
 	ocproute "github.com/openshift/api/route/v1"
-	appsv1 "k8s.io/api/apps/v1"
-	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -39,7 +36,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
@@ -125,6 +121,7 @@ var UIBootstrapData UIBootstrapTemplate
 //+kubebuilder:rbac:groups=operator.ibm.com,resources=accountiams/finalizers,verbs=update
 //+kubebuilder:rbac:groups=operator.ibm.com,resources=operandrequests,verbs=get;list;watch;create
 //+kubebuilder:rbac:groups=operators.coreos.com,resources=operatorgroups,verbs=get;list;watch
+//+kubebuilder:rbac:groups=redis.ibm.com,resources=rediscps,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=route.openshift.io,resources=routes,verbs=get;list;watch
 //+kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
@@ -198,27 +195,33 @@ func (r *AccountIAMReconciler) verifyPrereq(ctx context.Context, instance *opera
 		return err
 	}
 
-	operatorNames := []string{resources.WebSpherePackage, resources.IMPackage}
+	operatorNames := []string{resources.WebSpherePackage, resources.RedisOperator, resources.IMPackage}
 
 	// Request WebSphere, IM operator and wait for their status
 	if err := r.createOperandRequest(ctx, resources.UserMgmtOpreq, instance.Namespace, operatorNames); err != nil {
 		return err
 	}
 
-	// if err := r.waitForOperatorReady(ctx, instance.Namespace, resources.UserMgmtOpreq, resources.WebSpherePackage, resources.OperandStatusRedy); err != nil {
-	// 	return err
-	// }
-
-	if err := r.waitForOperatorReady(ctx, instance.Namespace, resources.UserMgmtOpreq, resources.IMPackage, resources.OperandStatusRedy); err != nil {
+	if err := waitForOperatorReady(ctx, r.Client, resources.UserMgmtOpreq, instance.Namespace); err != nil {
+		klog.Infof("Failed to wait for all operator ready in OperandRequest %s", resources.UserMgmtOpreq)
 		return err
 	}
 
-	existEDB, err := r.CheckCRD(resources.EDBAPIGroupVersion, resources.EDBClusterKind)
+	existRedis, err := r.CheckCRD(concat(resources.RedisAPIGroup, "/", resources.RedisVersion), resources.RedisKind)
 	if err != nil {
 		return err
 	}
-	if !existEDB {
-		return errors.New("missing EDB prereq")
+	if !existRedis {
+		return errors.New("Redis CRD not found")
+	}
+
+	if err := waitForOperandReady(ctx, r.Client, resources.UserMgmtOpreq, instance.Namespace); err != nil {
+		klog.Infof("Failed to wait for all operand ready in OperandRequest %s", resources.UserMgmtOpreq)
+		return err
+	}
+
+	if err := waitForRediscp(ctx, r.Client, instance.Namespace, resources.Rediscp, resources.RedisAPIGroup, resources.RedisKind, resources.RedisVersion, resources.OperandStatusComp); err != nil {
+		return err
 	}
 
 	existWebsphere, err := r.CheckCRD(resources.WebSphereAPIGroupVersion, resources.WebSphereKind)
@@ -309,31 +312,6 @@ func (r *AccountIAMReconciler) createOperandRequest(ctx context.Context, name, n
 	return nil
 }
 
-// waitForOperatorReady waits for the operator to be ready
-func (r *AccountIAMReconciler) waitForOperatorReady(ctx context.Context, ns, operandRequestName, operatorName, expectedStatus string) error {
-	return wait.PollImmediate(30*time.Second, 10*time.Minute, func() (bool, error) {
-		operandRequest := &odlm.OperandRequest{}
-		if err := r.Get(ctx, client.ObjectKey{Name: operandRequestName, Namespace: ns}, operandRequest); err != nil {
-			if k8serrors.IsNotFound(err) {
-				klog.V(2).Infof("OperandRequest %s not found in namespace %s", operandRequestName, ns)
-				return false, nil
-			}
-			klog.ErrorS(err, "Failed to get OperandRequest", "OperandRequest", operandRequestName)
-			return false, err
-		}
-
-		klog.Infof("Waiting for operator %s to be %s...", operatorName, expectedStatus)
-
-		for _, service := range operandRequest.Status.Services {
-			if service.OperatorName == operatorName && service.Status == expectedStatus {
-				klog.Infof("Operator %s is %s in namespace %s.", operatorName, expectedStatus, service.Namespace)
-				return true, nil
-			}
-		}
-		return false, nil
-	})
-}
-
 // CheckCRD returns true if the given crd is existent
 func (r *AccountIAMReconciler) CheckCRD(apiGroupVersion string, kind string) (bool, error) {
 	dc := discovery.NewDiscoveryClientForConfigOrDie(r.Config)
@@ -364,18 +342,6 @@ func (r *AccountIAMReconciler) ResourceExists(dc discovery.DiscoveryInterface, a
 		}
 	}
 	return false, nil
-}
-
-func generatePassword() ([]byte, error) {
-	random := make([]byte, 20)
-	_, err := rand.Read(random)
-	if err != nil {
-		return nil, err
-	}
-	encoded := base64.StdEncoding.EncodeToString(random)
-	encoded2 := base64.StdEncoding.EncodeToString([]byte(encoded))
-	result := []byte(encoded2)
-	return result, nil
 }
 
 // Get the host of the route
@@ -478,6 +444,7 @@ func (r *AccountIAMReconciler) cleanJob(ctx context.Context, ns string) error {
 // -------------- verifyPrereq helper functions done --------------
 
 // -------------- Reconcile resources helper functions --------------
+
 func (r *AccountIAMReconciler) reconcileOperandResources(ctx context.Context, instance *operatorv1alpha1.AccountIAM) error {
 
 	// TODO: will need to find a better place to initialize the database
@@ -625,7 +592,6 @@ func (r *AccountIAMReconciler) decodeData(data BootstrapSecret) (BootstrapSecret
 	return data, nil
 }
 
-// restart and check pod
 func (r *AccountIAMReconciler) restartAndCheckPod(ctx context.Context, ns, label string) error {
 	// restart platform-auth-service pod and wait for it to be ready
 
@@ -647,7 +613,8 @@ func (r *AccountIAMReconciler) restartAndCheckPod(ctx context.Context, ns, label
 
 	time.Sleep(10 * time.Second)
 
-	if err := r.waitForDeploymentReady(ctx, ns, label); err != nil {
+	if err := waitForDeploymentReady(ctx, r.Client, ns, label); err != nil {
+		klog.Error("Failed to wait for Deployment %s to be ready in namespace %s", label, ns)
 		return err
 	}
 
@@ -669,43 +636,6 @@ func (r *AccountIAMReconciler) getPodName(ctx context.Context, namespace, label 
 		return "", fmt.Errorf("No pod found with label %s in namespace %s", labelSelector, namespace)
 	}
 	return podList.Items[0].Name, nil
-}
-
-func (r *AccountIAMReconciler) waitForDeploymentReady(ctx context.Context, ns, label string) error {
-
-	return wait.PollImmediate(20*time.Second, 10*time.Minute, func() (bool, error) {
-		deployments := &appsv1.DeploymentList{}
-
-		if err := r.List(ctx, deployments, &client.ListOptions{Namespace: ns}); err != nil {
-			klog.V(2).ErrorS(err, "Failed to get deployment", "deployment", label)
-			return false, nil
-		}
-
-		var matchedDeployment *appsv1.Deployment
-		for _, deployment := range deployments.Items {
-			if strings.HasPrefix(deployment.Name, label) {
-				matchedDeployment = &deployment
-				break
-			}
-		}
-
-		if matchedDeployment == nil {
-			klog.Infof("No deployment found with prefix %s in namespace %s", label, ns)
-			return false, nil
-		}
-
-		klog.Infof("Waiting for Deployment %s to be ready...", label)
-
-		desiredReplicas := *matchedDeployment.Spec.Replicas
-		readyReplicas := matchedDeployment.Status.ReadyReplicas
-
-		if readyReplicas == desiredReplicas {
-			klog.Infof("Deployment %s is ready with %d/%d replicas.", label, readyReplicas, desiredReplicas)
-			return true, nil
-		}
-
-		return false, nil
-	})
 }
 
 // -------------- Reconcile resources helper functions done --------------
@@ -734,30 +664,12 @@ func (r *AccountIAMReconciler) configIM(ctx context.Context, instance *operatorv
 		return err
 	}
 
-	if err := r.waitForJob(ctx, instance.Namespace, resources.IMConfigJob); err != nil {
+	if err := waitForJob(ctx, r.Client, instance.Namespace, resources.IMConfigJob); err != nil {
+		klog.Error("Failed to wait for IM Config Job to be succeeded")
 		return err
 	}
 
 	return nil
-}
-
-func (r *AccountIAMReconciler) waitForJob(ctx context.Context, ns, name string) error {
-
-	return wait.PollImmediate(20*time.Second, 2*time.Minute, func() (bool, error) {
-		job := &batchv1.Job{}
-		if err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: ns}, job); err != nil {
-			klog.Errorf("failed to get job %s in namespace %s: %v", name, ns, err)
-			return false, err
-		}
-
-		klog.Infof("Waiting for Job %s to be ready...", name)
-
-		if job.Status.Succeeded > 0 {
-			return true, nil
-		}
-
-		return false, nil
-	})
 }
 
 // -------------- Config IM functions done --------------
