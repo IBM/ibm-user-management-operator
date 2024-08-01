@@ -39,6 +39,12 @@ const (
 	RedisAPIGroup = "redis.ibm.com"
 	// RedisVersion is the version of Redis
 	RedisVersion = "v1"
+	//RedisURLssl
+	RedisURLssl = "redis-url-ssl"
+	// RedisURL is the Certificate of Redis
+	RedisCert = "account-iam-ui-redis-cert"
+	// RedisCertKey is the key of Redis CA Certificate
+	RedisCertKey = "cacertb64.pem"
 	// OpreqPhaseRunning is the Running status of Operand
 	OpreqPhaseRunning = "Running"
 	// OperandStatusReady is the Ready status of Operand
@@ -53,4 +59,8 @@ const (
 	EDBAPIGroupVersion = "postgresql.k8s.enterprisedb.io/v1"
 	// IMConfigJob is the name of the IM configuration job
 	IMConfigJob = "mcsp-im-config-job"
+	// IMAPISecret is the secret where the IM API key is stored
+	IMAPISecret = "mcsp-im-integration-api-key"
+	// IMAPIKey is the key in the secret.data where the IM API key is stored
+	IMAPIKey = "API_KEY"
 )

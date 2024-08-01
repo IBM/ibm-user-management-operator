@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -12,6 +13,7 @@ import (
 	odlm "github.com/IBM/operand-deployment-lifecycle-manager/v4/api/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -64,9 +66,36 @@ func getImage(imageName string) string {
 	return image
 }
 
+// GetSecretData gets the data from a secret
+func getSecretData(ctx context.Context, k8sClient client.Client, secretName, ns, dataKey string) (string, error) {
+	secret := &corev1.Secret{}
+
+	if err := k8sClient.Get(ctx, types.NamespacedName{Name: secretName, Namespace: ns}, secret); err != nil {
+		return "", err
+	}
+
+	data, ok := secret.Data[dataKey]
+	if !ok {
+		return "", fmt.Errorf("key %s not found in secret %s", dataKey, secretName)
+	}
+
+	return string(data), nil
+}
+
+// InsertColonInRedisURL inserts colon in the redis URL SSL
+func insertColonInURL(redisURL string) string {
+	parts := strings.SplitN(redisURL, "@", 2)
+	if len(parts) == 2 {
+		parts[0] = strings.Replace(parts[0], "rediss://", "rediss://:", 1)
+		return parts[0] + "@" + parts[1]
+	}
+	return redisURL
+}
+
 // waitForOperatorReady check operator status in OperandRequest
 func waitForOperatorReady(ctx context.Context, k8sClient client.Client, opreqName, ns string) error {
 	return wait.PollImmediate(30*time.Second, 10*time.Minute, func() (bool, error) {
+		klog.Info("Start to check operator status in OperandRequest")
 		operandRequest := &odlm.OperandRequest{}
 		if err := k8sClient.Get(ctx, client.ObjectKey{Name: opreqName, Namespace: ns}, operandRequest); err != nil {
 			if k8serrors.IsNotFound(err) {

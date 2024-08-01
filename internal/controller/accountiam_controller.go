@@ -42,7 +42,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	operatorv1alpha1 "github.com/IBM/ibm-user-management-operator/api/v1alpha1"
 	"github.com/IBM/ibm-user-management-operator/internal/resources"
@@ -233,6 +232,7 @@ func (r *AccountIAMReconciler) verifyPrereq(ctx context.Context, instance *opera
 	}
 
 	// Generate PG password
+	klog.Info("Generating PG password...")
 	pgPassword, err := generatePassword()
 
 	if err != nil {
@@ -240,12 +240,14 @@ func (r *AccountIAMReconciler) verifyPrereq(ctx context.Context, instance *opera
 	}
 
 	// Get cp-console route
+	klog.Info("Getting cp-console route...")
 	host, err := r.getHost(ctx, "cp-console", instance.Namespace)
 	if err != nil {
 		return err
 	}
 
 	// Create bootstrap secret
+	klog.Info("Creating bootstrap secret...")
 	bootstrapsecret, err := r.initBootstrapData(ctx, instance.Namespace, pgPassword, host)
 	if err != nil {
 		return err
@@ -260,6 +262,7 @@ func (r *AccountIAMReconciler) verifyPrereq(ctx context.Context, instance *opera
 		return err
 	}
 
+	klog.Info("cleaning up job....")
 	if err := r.cleanJob(ctx, instance.Namespace); err != nil {
 		return err
 	}
@@ -729,6 +732,7 @@ func (r *AccountIAMReconciler) reconcileUI(ctx context.Context, instance *operat
 }
 
 func (r *AccountIAMReconciler) initUIBootstrapData(ctx context.Context, instance *operatorv1alpha1.AccountIAM) error {
+	klog.Infof("Initializing UI Bootstrap Data")
 	clusterInfo := &corev1.ConfigMap{}
 	if err := r.Get(ctx, types.NamespacedName{Namespace: instance.Namespace, Name: "ibmcloud-cluster-info"}, clusterInfo); err != nil {
 		return err
@@ -742,15 +746,33 @@ func (r *AccountIAMReconciler) initUIBootstrapData(ctx context.Context, instance
 	}
 	parsing := strings.Split(clusterInfo.Data["cluster_kube_apiserver_host"], ".")
 	domain := strings.Join(parsing[1:], ".")
-	log.Log.Info("", "domain: ", domain)
+	klog.Infof("domain: %s", domain)
 
-	apiKeySecret := &corev1.Secret{}
-	if err := r.Get(ctx, types.NamespacedName{Namespace: instance.Namespace, Name: "mcsp-im-integration-api-key"}, apiKeySecret); err != nil {
-		return errors.New("missing secret for API key, 'mcsp-im-integration-api-key'")
+	// Get the API key
+	apiKey, err := getSecretData(ctx, r.Client, resources.IMAPISecret, instance.Namespace, resources.IMAPIKey)
+	if err != nil {
+		klog.Errorf("Failed to get secret %s in namespace %s: %v", resources.IMAPISecret, instance.Namespace, err)
+		return err
 	}
-	apiKey, ok := apiKeySecret.Data["API_KEY"]
-	if !ok {
-		return errors.New("secret for API key, 'mcsp-im-integration-api-key', missing API_KEY field")
+	klog.Infof("apiKey: %s", apiKey)
+
+	// Get the Redis URL SSL
+	redisURlssl, err := getSecretData(ctx, r.Client, resources.Rediscp, instance.Namespace, resources.RedisURLssl)
+	if err != nil {
+		klog.Errorf("Failed to get secret %s in namespace %s: %v", resources.Rediscp, instance.Namespace, err)
+		return err
+	} else {
+		redisURlssl := insertColonInURL(redisURlssl)
+		klog.Infof("redisURlssl: %s", redisURlssl)
+	}
+
+	// get Redis cert
+	redisCert, err := getSecretData(ctx, r.Client, resources.RedisCert, instance.Namespace, resources.RedisCertKey)
+	if err != nil {
+		klog.Errorf("Failed to get secret %s in namespace %s: %v", resources.RedisCert, instance.Namespace, err)
+		return err
+	} else {
+		klog.Infof("redisCert: %s", redisCert)
 	}
 
 	decodedClientID, err := base64.StdEncoding.DecodeString(BootstrapData.ClientID)
@@ -768,8 +790,8 @@ func (r *AccountIAMReconciler) initUIBootstrapData(ctx context.Context, instance
 		ClientID:                   string(decodedClientID),
 		ClientSecret:               string(decodedClientSecret),
 		IAMGlobalAPIKey:            string(apiKey),
-		RedisHost:                  "placeholder value until onprem Redis integration done",
-		RedisCA:                    "placeholder value until onprem Redis integration done",
+		RedisHost:                  redisURlssl,
+		RedisCA:                    redisCert,
 		SessionSecret:              "placeholder value because we do not know what this is for yet",
 		DeploymentCloud:            "IBM_CLOUD",
 		IAMAPI:                     concat("https://account-iam-", instance.Namespace, ".apps.", domain),
