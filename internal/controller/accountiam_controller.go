@@ -211,6 +211,10 @@ func (r *AccountIAMReconciler) verifyPrereq(ctx context.Context, instance *opera
 	// 	return err
 	// }
 
+	if err := r.createOperandRBAC(ctx, instance); err != nil {
+		return err
+	}
+
 	if err := r.waitForOperatorReady(ctx, instance.Namespace, resources.UserMgmtOpreq, resources.IMPackage, resources.OperandStatusRedy); err != nil {
 		return err
 	}
@@ -470,6 +474,30 @@ func (r *AccountIAMReconciler) cleanJob(ctx context.Context, ns string) error {
 		PropagationPolicy: &background,
 	}); err != nil {
 		if !k8serrors.IsNotFound(err) {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// if rbac not exist, create RBAC for user-mgmt operand
+// if rbac exist, update RBAC for user-mgmt operand
+func (r *AccountIAMReconciler) createOperandRBAC(ctx context.Context, instance *operatorv1alpha1.AccountIAM) error {
+	klog.Infof("Creating or updating RBAC for user-mgmt operand")
+
+	for _, v := range res.OperandRBACs {
+		object := &unstructured.Unstructured{}
+		v = replaceImages(v)
+		manifest := []byte(v)
+		if err := yaml.Unmarshal(manifest, object); err != nil {
+			return err
+		}
+		object.SetNamespace(instance.Namespace)
+		if err := controllerutil.SetControllerReference(instance, object, r.Scheme); err != nil {
+			return err
+		}
+		if err := r.createOrUpdate(ctx, object); err != nil {
 			return err
 		}
 	}

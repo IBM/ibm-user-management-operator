@@ -1,10 +1,16 @@
 package yamls
 
-const UTILS_JOB_ROLE = `
+var OperandRBACs = []string{
+	USER_MGMT_OPERAND_RB,
+	USER_MGMT_OPERAND_ROLE,
+	USER_MGMT_OPERAND_SA,
+}
+
+const USER_MGMT_OPERAND_ROLE = `
 kind: Role
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: mcsp-utils
+	name: user-mgmt-operand-role
 rules:
   - verbs:
       - get
@@ -14,8 +20,8 @@ rules:
       - ''
     resources:
       - secrets
-	  - configmaps
-	  - pods
+      - configmaps
+      - pods
   - verbs:
       - create
       - update
@@ -26,23 +32,25 @@ rules:
       - secrets
 `
 
-const UTILS_JOB_SA = `
+const USER_MGMT_OPERAND_SA = `
 kind: ServiceAccount
 apiVersion: v1
 metadata:
-  name: mcsp-utils
+  name: user-mgmt-operand-serviceaccount
+  labels:
+	app.kubernetes.io/instance: user-mgmt-operand-serviceaccount
 `
 
-const UTILS_JOB_RB = `
+const USER_MGMT_OPERAND_RB = `
 kind: RoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: mcsp-utils
+  name: user-mgmt-operand-rolebinding
 subjects:
   - kind: ServiceAccount
-    name: mcsp-utils
+    name: user-mgmt-operand-serviceaccount
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: mcsp-utils
+  name: user-mgmt-operand-role
 `
