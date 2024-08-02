@@ -58,6 +58,7 @@ type AccountIAMReconciler struct {
 	Config *rest.Config
 }
 
+// BootstrapSecret stores all the bootstrap secret data
 type BootstrapSecret struct {
 	Realm               string
 	ClientID            string
@@ -78,6 +79,14 @@ type BootstrapSecret struct {
 }
 
 var BootstrapData BootstrapSecret
+
+// RedisCRParams holds the parameters for the Redis CR
+type RedisCRParams struct {
+	RedisCRSize    int
+	RedisCRVersion string
+}
+
+var RedisCRData RedisCRParams
 
 type UIBootstrapTemplate struct {
 	Hostname                    string
@@ -197,29 +206,23 @@ func (r *AccountIAMReconciler) verifyPrereq(ctx context.Context, instance *opera
 	operatorNames := []string{resources.WebSpherePackage, resources.RedisOperator, resources.IMPackage}
 
 	// Request WebSphere, IM operator and wait for their status
-	if err := r.createOperandRequest(ctx, resources.UserMgmtOpreq, instance.Namespace, operatorNames); err != nil {
+	if err := r.createOperandRequest(ctx, instance, resources.UserMgmtOpreq, operatorNames); err != nil {
 		return err
 	}
 
 	if err := waitForOperatorReady(ctx, r.Client, resources.UserMgmtOpreq, instance.Namespace); err != nil {
-		klog.Infof("Failed to wait for all operator ready in OperandRequest %s", resources.UserMgmtOpreq)
+		klog.Errorf("Failed to wait for all operator ready in OperandRequest %s", resources.UserMgmtOpreq)
 		return err
 	}
 
-	existRedis, err := r.CheckCRD(concat(resources.RedisAPIGroup, "/", resources.RedisVersion), resources.RedisKind)
-	if err != nil {
+	// Create Redis CR and wait for it to be ready
+	if err := r.createRedisCR(ctx, instance); err != nil {
+		klog.Errorf("Failed to create Redis CR: %v", err)
 		return err
-	}
-	if !existRedis {
-		return errors.New("Redis CRD not found")
 	}
 
 	if err := waitForOperandReady(ctx, r.Client, resources.UserMgmtOpreq, instance.Namespace); err != nil {
 		klog.Infof("Failed to wait for all operand ready in OperandRequest %s", resources.UserMgmtOpreq)
-		return err
-	}
-
-	if err := waitForRediscp(ctx, r.Client, instance.Namespace, resources.Rediscp, resources.RedisAPIGroup, resources.RedisKind, resources.RedisVersion, resources.OperandStatusComp); err != nil {
 		return err
 	}
 
@@ -232,7 +235,7 @@ func (r *AccountIAMReconciler) verifyPrereq(ctx context.Context, instance *opera
 	}
 
 	// Generate PG password
-	klog.Info("Generating PG password...")
+	klog.Info("Generating PG password")
 	pgPassword, err := generatePassword(20)
 
 	if err != nil {
@@ -240,14 +243,14 @@ func (r *AccountIAMReconciler) verifyPrereq(ctx context.Context, instance *opera
 	}
 
 	// Get cp-console route
-	klog.Info("Getting cp-console route...")
+	klog.Info("Getting cp-console route")
 	host, err := r.getHost(ctx, "cp-console", instance.Namespace)
 	if err != nil {
 		return err
 	}
 
 	// Create bootstrap secret
-	klog.Info("Creating bootstrap secret...")
+	klog.Info("Creating bootstrap secret")
 	bootstrapsecret, err := r.initBootstrapData(ctx, instance.Namespace, pgPassword, host)
 	if err != nil {
 		return err
@@ -262,7 +265,6 @@ func (r *AccountIAMReconciler) verifyPrereq(ctx context.Context, instance *opera
 		return err
 	}
 
-	klog.Info("cleaning up job....")
 	if err := r.cleanJob(ctx, instance.Namespace); err != nil {
 		return err
 	}
@@ -271,9 +273,9 @@ func (r *AccountIAMReconciler) verifyPrereq(ctx context.Context, instance *opera
 }
 
 // CreateOperandRequest creates an OperandRequest resource
-func (r *AccountIAMReconciler) createOperandRequest(ctx context.Context, name, ns string, operandNames []string) error {
+func (r *AccountIAMReconciler) createOperandRequest(ctx context.Context, instance *operatorv1alpha1.AccountIAM, name string, operandNames []string) error {
 	operandRequest := &odlm.OperandRequest{}
-	if err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: ns}, operandRequest); err != nil {
+	if err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: instance.Namespace}, operandRequest); err != nil {
 		if !k8serrors.IsNotFound(err) {
 			return err
 		}
@@ -282,12 +284,11 @@ func (r *AccountIAMReconciler) createOperandRequest(ctx context.Context, name, n
 			operands = append(operands, odlm.Operand{Name: name})
 		}
 
-		klog.Infof("Creating OperandRequest %s in namespace %s", name, ns)
+		klog.Infof("Creating OperandRequest %s in namespace %s", name, instance.Namespace)
 
 		operandReq := &odlm.OperandRequest{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      name,
-				Namespace: ns,
+				Name: name,
 				// Labels: map[string]string{
 				// 	"app.kubernetes.io/instance":   "operand-deployment-lifecycle-manager",
 				// 	"app.kubernetes.io/managed-by": "operand-deployment-lifecycle-manager",
@@ -304,6 +305,11 @@ func (r *AccountIAMReconciler) createOperandRequest(ctx context.Context, name, n
 			},
 		}
 
+		operandReq.SetNamespace(instance.Namespace)
+		if err := controllerutil.SetControllerReference(instance, operandReq, r.Scheme); err != nil {
+			return err
+		}
+
 		if err := r.Create(ctx, operandReq); err != nil {
 			if !k8serrors.IsAlreadyExists(err) {
 				return err
@@ -311,7 +317,37 @@ func (r *AccountIAMReconciler) createOperandRequest(ctx context.Context, name, n
 		}
 	}
 
-	klog.Infof("Successfully created OperandRequest %s in namespace %s", name, ns)
+	klog.Infof("Successfully created OperandRequest %s in namespace %s", name, instance.Namespace)
+	return nil
+}
+
+func (r *AccountIAMReconciler) createRedisCR(ctx context.Context, instance *operatorv1alpha1.AccountIAM) error {
+
+	// Check if Redis CRD exists
+	existRedis, err := r.CheckCRD(concat(resources.RedisAPIGroup, "/", resources.RedisVersion), resources.RedisKind)
+	if err != nil {
+		return err
+	}
+	if !existRedis {
+		return errors.New("Redis CRD not found")
+	}
+
+	// Create Redis CR
+	klog.Infof("Redis CRD exists, creating Redis CR %s in namespace %s", resources.Rediscp, instance.Namespace)
+	redisCRData := RedisCRParams{
+		RedisCRSize:    3,
+		RedisCRVersion: "1.2.0",
+	}
+
+	if err := r.injectData(ctx, instance, []string{res.RedisCRTemplate}, redisCRData); err != nil {
+		klog.Errorf("Failed to create Redis CR: %v", err)
+		return err
+	}
+
+	// Wait for Redis CR to be ready
+	if err := waitForRediscp(ctx, r.Client, instance.Namespace, resources.Rediscp, resources.RedisAPIGroup, resources.RedisKind, resources.RedisVersion, resources.OperandStatusComp); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -451,7 +487,7 @@ func (r *AccountIAMReconciler) cleanJob(ctx context.Context, ns string) error {
 func (r *AccountIAMReconciler) reconcileOperandResources(ctx context.Context, instance *operatorv1alpha1.AccountIAM) error {
 
 	// TODO: will need to find a better place to initialize the database
-	klog.Infof("Creating DB Bootstrap Job")
+	klog.Infof("Applying DB Bootstrap Job")
 	object := &unstructured.Unstructured{}
 	resource := replaceImages(res.DB_BOOTSTRAP_JOB)
 	manifest := []byte(resource)
@@ -536,18 +572,16 @@ func (r *AccountIAMReconciler) reconcileOperandResources(ctx context.Context, in
 	if err := r.restartAndCheckPod(ctx, instance.Namespace, "platform-auth-service"); err != nil {
 		return err
 	}
-	klog.Infof(" platform-auth-service pod is ready")
 
 	if err := r.restartAndCheckPod(ctx, instance.Namespace, "platform-identity-provider"); err != nil {
 		return err
 	}
-	klog.Infof(" platform-identity-provider pod is ready")
 
 	klog.Infof("MCSP operand resources created successfully")
 	return nil
 }
 
-func (r *AccountIAMReconciler) injectData(ctx context.Context, instance *operatorv1alpha1.AccountIAM, manifests []string, bootstrapData BootstrapSecret) error {
+func (r *AccountIAMReconciler) injectData(ctx context.Context, instance *operatorv1alpha1.AccountIAM, manifests []string, data interface{}) error {
 
 	var buffer bytes.Buffer
 
@@ -559,7 +593,7 @@ func (r *AccountIAMReconciler) injectData(ctx context.Context, instance *operato
 		// Parse the manifest template and execute it with the provided bootstrap data
 		manifest = replaceImages(manifest)
 		t := template.Must(template.New("template resrouces").Parse(manifest))
-		if err := t.Execute(&buffer, bootstrapData); err != nil {
+		if err := t.Execute(&buffer, data); err != nil {
 			return err
 		}
 
@@ -651,13 +685,12 @@ func (r *AccountIAMReconciler) configIM(ctx context.Context, instance *operatorv
 	if err != nil {
 		return err
 	}
-	klog.Infof("account-iam route host: %s", host)
 
 	mcspHost := "https://" + host
 	encodedURL := base64.StdEncoding.EncodeToString([]byte(mcspHost))
 	BootstrapData.AccountIAMURL = encodedURL
 
-	klog.Infof("Creating IM Config Job")
+	klog.Infof("Applying IM Config Job")
 	decodedData, err := r.decodeData(BootstrapData)
 	if err != nil {
 		return err

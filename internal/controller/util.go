@@ -95,7 +95,6 @@ func insertColonInURL(redisURL string) string {
 // waitForOperatorReady check operator status in OperandRequest
 func waitForOperatorReady(ctx context.Context, k8sClient client.Client, opreqName, ns string) error {
 	return wait.PollImmediate(30*time.Second, 10*time.Minute, func() (bool, error) {
-		klog.Info("Start to check operator status in OperandRequest")
 		operandRequest := &odlm.OperandRequest{}
 		if err := k8sClient.Get(ctx, client.ObjectKey{Name: opreqName, Namespace: ns}, operandRequest); err != nil {
 			if k8serrors.IsNotFound(err) {
@@ -119,7 +118,7 @@ func waitForOperatorReady(ctx context.Context, k8sClient client.Client, opreqNam
 
 // waitForOperandReady checks if all services in OperandRequest are ready
 func waitForOperandReady(ctx context.Context, k8sClient client.Client, opreqName, ns string) error {
-	return wait.PollImmediate(30*time.Second, 10*time.Minute, func() (bool, error) {
+	return wait.PollImmediate(60*time.Second, 10*time.Minute, func() (bool, error) {
 		operandRequest := &odlm.OperandRequest{}
 		if err := k8sClient.Get(ctx, types.NamespacedName{Name: opreqName, Namespace: ns}, operandRequest); err != nil {
 			return false, err
@@ -138,7 +137,6 @@ func waitForOperandReady(ctx context.Context, k8sClient client.Client, opreqName
 			return true, nil
 		}
 
-		klog.Infof("Not all services in OperandRequest %s in namespace %s are Ready yet...", opreqName, ns)
 		return false, nil
 	})
 }
