@@ -233,7 +233,7 @@ func (r *AccountIAMReconciler) verifyPrereq(ctx context.Context, instance *opera
 
 	// Generate PG password
 	klog.Info("Generating PG password...")
-	pgPassword, err := generatePassword()
+	pgPassword, err := generatePassword(20)
 
 	if err != nil {
 		return err
@@ -775,6 +775,12 @@ func (r *AccountIAMReconciler) initUIBootstrapData(ctx context.Context, instance
 		klog.Infof("redisCert: %s", redisCert)
 	}
 
+	SessionSecret, err := generatePassword(48)
+	if err != nil {
+		return err
+	}
+	klog.Info("SessionSecret: ", string(SessionSecret))
+
 	decodedClientID, err := base64.StdEncoding.DecodeString(BootstrapData.ClientID)
 	if err != nil {
 		return err
@@ -792,7 +798,7 @@ func (r *AccountIAMReconciler) initUIBootstrapData(ctx context.Context, instance
 		IAMGlobalAPIKey:            string(apiKey),
 		RedisHost:                  redisURlssl,
 		RedisCA:                    redisCert,
-		SessionSecret:              "placeholder value because we do not know what this is for yet",
+		SessionSecret:              string(SessionSecret),
 		DeploymentCloud:            "IBM_CLOUD",
 		IAMAPI:                     concat("https://account-iam-", instance.Namespace, ".apps.", domain),
 		NodeEnv:                    "production",

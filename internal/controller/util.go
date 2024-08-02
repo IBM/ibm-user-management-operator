@@ -37,8 +37,8 @@ func NewUnstructured(group, kind, version string) *unstructured.Unstructured {
 	return u
 }
 
-func generatePassword() ([]byte, error) {
-	random := make([]byte, 20)
+func generatePassword(len int) ([]byte, error) {
+	random := make([]byte, len)
 	_, err := rand.Read(random)
 	if err != nil {
 		return nil, err
