@@ -75,8 +75,9 @@ type BootstrapSecret struct {
 	GlobalAccountIDP    string
 	GlobalAccountAud    string
 	UserValidationAPIV2 string
-	IAMHOSTURL          string
+	IAMHostURL          string
 	AccountIAMURL       string
+	AccountIAMHostURL   string
 	AccountIAMNamespace string
 }
 
@@ -411,6 +412,7 @@ func (r *AccountIAMReconciler) initBootstrapData(ctx context.Context, ns string,
 			return nil, err
 		}
 
+		accountIAMHost := strings.Replace(host, "cp-console", "account-iam-console", 1)
 		klog.Info("Creating bootstrap secret with PG password")
 		newsecret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
@@ -432,7 +434,8 @@ func (r *AccountIAMReconciler) initBootstrapData(ctx context.Context, ns string,
 				"GlobalAccountAud":    []byte("mcsp-id"),
 				"AccountIAMNamespace": []byte(ns),
 				"PGPassword":          pg,
-				"IAMHOSTURL":          []byte("https://" + host),
+				"IAMHostURL":          []byte("https://" + host),
+				"AccountIAMHostURL":   []byte("https://" + accountIAMHost),
 			},
 			Type: corev1.SecretTypeOpaque,
 		}
