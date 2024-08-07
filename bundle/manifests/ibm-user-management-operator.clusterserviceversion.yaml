@@ -24,7 +24,7 @@ metadata:
     categories: Security
     certified: "false"
     containerImage: icr.io/cpopen/ibm-user-management-operator:latest
-    createdAt: "2024-07-31T20:52:03Z"
+    createdAt: "2024-08-07T19:31:17Z"
     description: Operator for managing deployment of account-iam service.
     nss.operator.ibm.com/managed-operators: ibm-user-management-operator
     olm.skipRange: ">=1.0.0 <1.1.0"
@@ -274,8 +274,12 @@ spec:
           resources:
           - routes
           verbs:
+          - create
+          - delete
           - get
           - list
+          - patch
+          - update
           - watch
         - apiGroups:
           - security.openshift.io

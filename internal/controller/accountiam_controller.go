@@ -75,8 +75,9 @@ type BootstrapSecret struct {
 	GlobalAccountIDP    string
 	GlobalAccountAud    string
 	UserValidationAPIV2 string
-	IAMHOSTURL          string
+	IAMHostURL          string
 	AccountIAMURL       string
+	AccountIAMHostURL   string
 	AccountIAMNamespace string
 }
 
@@ -122,6 +123,7 @@ type UIBootstrapTemplate struct {
 	IMIDMgmt                    string
 	CSIDPURL                    string
 	OnPremAccount               string
+	OnPremInstance              string
 }
 
 var UIBootstrapData UIBootstrapTemplate
@@ -132,7 +134,7 @@ var UIBootstrapData UIBootstrapTemplate
 //+kubebuilder:rbac:groups=operator.ibm.com,resources=operandrequests,verbs=get;list;watch;create
 //+kubebuilder:rbac:groups=operators.coreos.com,resources=operatorgroups,verbs=get;list;watch
 //+kubebuilder:rbac:groups=redis.ibm.com,resources=rediscps,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=route.openshift.io,resources=routes,verbs=get;list;watch
+//+kubebuilder:rbac:groups=route.openshift.io,resources=routes,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
@@ -411,6 +413,7 @@ func (r *AccountIAMReconciler) initBootstrapData(ctx context.Context, ns string,
 			return nil, err
 		}
 
+		accountIAMHost := strings.Replace(host, "cp-console", "account-iam-console", 1)
 		klog.Info("Creating bootstrap secret with PG password")
 		newsecret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
@@ -432,7 +435,8 @@ func (r *AccountIAMReconciler) initBootstrapData(ctx context.Context, ns string,
 				"GlobalAccountAud":    []byte("mcsp-id"),
 				"AccountIAMNamespace": []byte(ns),
 				"PGPassword":          pg,
-				"IAMHOSTURL":          []byte("https://" + host),
+				"IAMHostURL":          []byte("https://" + host),
+				"AccountIAMHostURL":   []byte("https://" + accountIAMHost),
 			},
 			Type: corev1.SecretTypeOpaque,
 		}
@@ -796,10 +800,9 @@ func (r *AccountIAMReconciler) initUIBootstrapData(ctx context.Context, instance
 	if err != nil {
 		klog.Errorf("Failed to get secret %s in namespace %s: %v", resources.Rediscp, instance.Namespace, err)
 		return err
-	} else {
-		redisURlssl := insertColonInURL(redisURlssl)
-		klog.Infof("redisURlssl: %s", redisURlssl)
 	}
+	redisURlssl = insertColonInURL(redisURlssl)
+	klog.Infof("redisURlssl: %s", redisURlssl)
 
 	// get Redis cert
 	redisCert, err := getSecretData(ctx, r.Client, resources.RedisCert, instance.Namespace, resources.RedisCertKey)
@@ -826,8 +829,8 @@ func (r *AccountIAMReconciler) initUIBootstrapData(ctx context.Context, instance
 	}
 
 	UIBootstrapData = UIBootstrapTemplate{
-		Hostname:                   concat("account-iam-ui-inst-", instance.Namespace, ".apps.", domain),
-		InstanceManagementHostname: concat("account-iam-ui-inst-", instance.Namespace, ".apps.", domain),
+		Hostname:                   concat("account-iam-console-", instance.Namespace, ".apps.", domain),
+		InstanceManagementHostname: concat("account-iam-console-", instance.Namespace, ".apps.", domain),
 		ClientID:                   string(decodedClientID),
 		ClientSecret:               string(decodedClientSecret),
 		IAMGlobalAPIKey:            string(apiKey),
@@ -842,7 +845,8 @@ func (r *AccountIAMReconciler) initUIBootstrapData(ctx context.Context, instance
 		IssuerBaseURL:              concat(cpconsole, "/idprovider/v1/auth"),
 		IMIDMgmt:                   cpconsole,
 		CSIDPURL:                   concat(cpconsole, "/common-nav/identity-access/realms"),
-		OnPremAccount:              "mcsp-im-intgn-account",
+		OnPremAccount:              "default-account",
+		OnPremInstance:             "default-service",
 	}
 
 	return nil
@@ -869,7 +873,8 @@ func (r *AccountIAMReconciler) createOrUpdate(ctx context.Context, obj *unstruct
 		}
 	}
 
-	if err == nil {
+	// if the obj is Job, skip the update
+	if obj.GetKind() == "Job" {
 		return nil
 	}
 
