@@ -799,10 +799,9 @@ func (r *AccountIAMReconciler) initUIBootstrapData(ctx context.Context, instance
 	if err != nil {
 		klog.Errorf("Failed to get secret %s in namespace %s: %v", resources.Rediscp, instance.Namespace, err)
 		return err
-	} else {
-		redisURlssl := insertColonInURL(redisURlssl)
-		klog.Infof("redisURlssl: %s", redisURlssl)
 	}
+	redisURlssl = insertColonInURL(redisURlssl)
+	klog.Infof("redisURlssl: %s", redisURlssl)
 
 	// get Redis cert
 	redisCert, err := getSecretData(ctx, r.Client, resources.RedisCert, instance.Namespace, resources.RedisCertKey)
@@ -829,8 +828,8 @@ func (r *AccountIAMReconciler) initUIBootstrapData(ctx context.Context, instance
 	}
 
 	UIBootstrapData = UIBootstrapTemplate{
-		Hostname:                   concat("account-iam-ui-inst-", instance.Namespace, ".apps.", domain),
-		InstanceManagementHostname: concat("account-iam-ui-inst-", instance.Namespace, ".apps.", domain),
+		Hostname:                   concat("account-iam-console-", instance.Namespace, ".apps.", domain),
+		InstanceManagementHostname: concat("account-iam-console-", instance.Namespace, ".apps.", domain),
 		ClientID:                   string(decodedClientID),
 		ClientSecret:               string(decodedClientSecret),
 		IAMGlobalAPIKey:            string(apiKey),
