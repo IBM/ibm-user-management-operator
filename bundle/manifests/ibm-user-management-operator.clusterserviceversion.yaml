@@ -27,13 +27,15 @@ metadata:
     createdAt: "2024-07-31T20:52:03Z"
     description: Operator for managing deployment of account-iam service.
     nss.operator.ibm.com/managed-operators: ibm-user-management-operator
-    olm.skipRange: <0.0.0
+    olm.skipRange: ">=1.0.0 <1.1.0"
+    operatorChannel: v1.0
+    operatorVersion: 1.0.0
     operators.operatorframework.io/builder: operator-sdk-v1.34.1
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
     support: IBM
   labels:
     operatorframework.io/arch.amd64: supported
-  name: ibm-user-management-operator.v0.0.1
+  name: ibm-user-management-operator.v1.0.0
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -434,4 +436,4 @@ spec:
   maturity: alpha
   provider:
     name: IBM
-  version: 0.0.1
+  version: 1.0.0

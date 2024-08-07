@@ -10,10 +10,12 @@ metadata:
     description: Operator for managing deployment of account-iam service.
     nss.operator.ibm.com/managed-operators: ibm-user-management-operator
     olm.skipRange: <0.0.0
+    operatorChannel: v1.0
+    operatorVersion: 1.0.0
     support: IBM
   labels:
     operatorframework.io/arch.amd64: supported
-  name: ibm-user-management-operator.v0.0.0
+  name: ibm-user-management-operator.v1.0.0
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -57,4 +59,4 @@ spec:
   maturity: alpha
   provider:
     name: IBM
-  version: 0.0.0
+  version: 1.0.0
