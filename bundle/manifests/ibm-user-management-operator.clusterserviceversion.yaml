@@ -341,15 +341,15 @@ spec:
                 - name: OPERATOR_NAME
                   value: ibm-user-management-operator
                 - name: MCSP_UTILS_IMAGE
-                  value: icr.io/cpopen/mcsp-utils:1.0.0
+                  value: icr.io/cpopen/cpfs/mcsp-utils:1.0.0
                 - name: ACCOUNT_IAM_APP_IMAGE
-                  value: icr.io/cpopen/account-iam:1.0.0
+                  value: icr.io/cpopen/cpfs/account-iam:1.0.0
                 - name: MCSP_IM_CONFIG_JOB_IMAGE
-                  value: icr.io/cpopen/mcsp-im-config-job:1.0.0 
+                  value: icr.io/cpopen/cpfs/mcsp-im-config-job:1.0.0 
                 - name: ACCOUNT_IAM_UI_API_SERVICE_IMAGE
-                  value: icr.io/cpopen/api_service:1.0.0
+                  value: icr.io/cpopen/cpfs/api_service:1.0.0
                 - name: ACCOUNT_IAM_UI_INSTANCE_SERVICE_IMAGE
-                  value: icr.io/cpopen/instance_management_service:1.0.0
+                  value: icr.io/cpopen/cpfs/instance_management_service:1.0.0
                 image: icr.io/cpopen/ibm-user-management-operator:latest
                 imagePullPolicy: Always
                 livenessProbe:
@@ -443,12 +443,12 @@ spec:
   version: 0.0.0
   relatedImages:
   - name: MCSP_UTILS_IMAGE
-    value: icr.io/cpopen/mcsp-utils:1.0.0
+    value: icr.io/cpopen/cpfs/mcsp-utils:1.0.0
   - name: ACCOUNT_IAM_APP_IMAGE
-    value: icr.io/cpopen/account-iam:1.0.0
+    value: icr.io/cpopen/cpfs/account-iam:1.0.0
   - name: MCSP_IM_CONFIG_JOB_IMAGE
-    value: icr.io/cpopen/mcsp-im-config-job:1.0.0 
+    value: icr.io/cpopen/cpfs/mcsp-im-config-job:1.0.0 
   - name: ACCOUNT_IAM_UI_API_SERVICE_IMAGE
-    value: icr.io/cpopen/api_service:1.0.0
+    value: icr.io/cpopen/cpfs/api_service:1.0.0
   - name: ACCOUNT_IAM_UI_INSTANCE_SERVICE_IMAGE
-    value: icr.io/cpopen/instance_management_service:1.0.0
+    value: icr.io/cpopen/cpfs/instance_management_service:1.0.0
