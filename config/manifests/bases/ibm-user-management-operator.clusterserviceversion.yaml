@@ -68,4 +68,4 @@ spec:
     value: icr.io/cpopen/cpfs/api_service:1.0.0
   - name: ACCOUNT_IAM_UI_INSTANCE_SERVICE_IMAGE
     value: icr.io/cpopen/cpfs/instance_management_service:1.0.0
-  version: 0.0.0
+  version: 1.0.0

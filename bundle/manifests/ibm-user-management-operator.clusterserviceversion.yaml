@@ -438,7 +438,7 @@ spec:
   maturity: alpha
   provider:
     name: IBM
-  version: 0.0.0
+  version: 1.0.0
   relatedImages:
   - name: MCSP_UTILS_IMAGE
     value: icr.io/cpopen/cpfs/mcsp-utils:1.0.0
