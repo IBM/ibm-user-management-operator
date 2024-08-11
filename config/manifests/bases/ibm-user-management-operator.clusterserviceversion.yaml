@@ -8,12 +8,13 @@ metadata:
     certified: "false"
     containerImage: icr.io/cpopen/ibm-user-management-operator:latest
     description: Operator for managing deployment of account-iam service.
+    features.operators.openshift.io/disconnected: "true"
     nss.operator.ibm.com/managed-operators: ibm-user-management-operator
-    olm.skipRange: <0.0.0
+    olm.skipRange: <1.0.0
     support: IBM
   labels:
     operatorframework.io/arch.amd64: supported
-  name: ibm-user-management-operator.v0.0.0
+  name: ibm-user-management-operator.v1.0.0
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -55,6 +56,7 @@ spec:
   - email: support@ibm.com
     name: IBM Support
   maturity: alpha
+  minKubeVersion: 1.19.0
   provider:
     name: IBM
-  version: 0.0.0
+  version: 1.0.0

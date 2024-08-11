@@ -1,7 +1,7 @@
 # Override default variable values from top level Makefile #
 
-VERSION ?= 0.0.1
-CHANNELS ?= v0.1
+VERSION ?= 1.0.0
+CHANNELS ?= v1.0
 
 # IBM specific # 
 
@@ -102,8 +102,8 @@ docker-build-prod: docker-build
 
 .PHONY: docker-build-push-prod
 docker-build-push-prod: docker-build-prod docker-push
-	$(CONTAINER_TOOL) tag $(IMG) $(IMAGE_TAG_BASE):v$(VERSION)
-	$(MAKE) docker-push IMG=$(IMAGE_TAG_BASE):v$(VERSION)
+	$(CONTAINER_TOOL) tag $(IMG) $(IMAGE_TAG_BASE):$(VERSION)
+	$(MAKE) docker-push IMG=$(IMAGE_TAG_BASE):$(VERSION)
 
 clean-before-commit:
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(ICR_IMAGE_TAG_BASE):latest

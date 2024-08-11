@@ -24,16 +24,17 @@ metadata:
     categories: Security
     certified: "false"
     containerImage: icr.io/cpopen/ibm-user-management-operator:latest
-    createdAt: "2024-07-29T18:37:34Z"
+    createdAt: "2024-08-08T22:21:31Z"
     description: Operator for managing deployment of account-iam service.
+    features.operators.openshift.io/disconnected: "true"
     nss.operator.ibm.com/managed-operators: ibm-user-management-operator
-    olm.skipRange: <0.0.0
+    olm.skipRange: <1.0.0
     operators.operatorframework.io/builder: operator-sdk-v1.34.1
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
     support: IBM
   labels:
     operatorframework.io/arch.amd64: supported
-  name: ibm-user-management-operator.v0.0.1
+  name: ibm-user-management-operator.v1.0.0
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -256,12 +257,40 @@ spec:
           - update
           - watch
         - apiGroups:
+          - redis.ibm.com
+          resources:
+          - rediscps
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
           - route.openshift.io
           resources:
           - routes
           verbs:
+          - create
+          - delete
           - get
           - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - route.openshift.io
+          resources:
+          - routes/custom-host
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
           - watch
         - apiGroups:
           - security.openshift.io
@@ -322,16 +351,16 @@ spec:
                       fieldPath: metadata.annotations['olm.targetNamespaces']
                 - name: OPERATOR_NAME
                   value: ibm-user-management-operator
-                - name: MCSP_UTILS_IMAGE
-                  value: docker-na-public.artifactory.swg-devops.com/hyc-cloud-private-integration-docker-local/ibmcom/mcsp-utils:latest
-                - name: ACCOUNT_IAM_APP_IMAGE
-                  value: docker-na-public.artifactory.swg-devops.com/hyc-cloud-private-integration-docker-local/ibmcom/account-iam:20240704015703-development-a5addf36327e2d6b43cb0a96d1e34f707d3433e0
-                - name: MCSP_IM_CONFIG_JOB_IMAGE
-                  value: docker-na-public.artifactory.swg-devops.com/hyc-cloud-private-integration-docker-local/ibmcom/mcsp-im-config-job:latest
-                - name: ACCOUNT_IAM_UI_API_SERVICE_IMAGE
-                  value: docker-na-public.artifactory.swg-devops.com/hyc-cloud-private-scratch-docker-local/sgrube/api_service:cs
-                - name: ACCOUNT_IAM_UI_INSTANCE_SERVICE_IMAGE
-                  value: docker-na-public.artifactory.swg-devops.com/hyc-cloud-private-scratch-docker-local/sgrube/instance_service:cs
+                - name: RELATED_IMAGE_MCSP_UTILS
+                  value: icr.io/cpopen/cpfs/mcsp-utils:1.0.0
+                - name: RELATED_IMAGE_ACCOUNT_IAM
+                  value: icr.io/cpopen/cpfs/account-iam:1.0.0
+                - name: RELATED_IMAGE_MCSP_IM_CONFIG_JOB
+                  value: icr.io/cpopen/cpfs/mcsp-im-config-job:1.0.0
+                - name: RELATED_IMAGE_API_SERVICE
+                  value: icr.io/cpopen/cpfs/api_service:1.0.0
+                - name: RELATED_IMAGE_INSTANCE_MANAGEMENT_SERVICE
+                  value: icr.io/cpopen/cpfs/instance_management_service:1.0.0
                 image: icr.io/cpopen/ibm-user-management-operator:latest
                 imagePullPolicy: Always
                 livenessProbe:
@@ -420,6 +449,18 @@ spec:
   - email: support@ibm.com
     name: IBM Support
   maturity: alpha
+  minKubeVersion: 1.19.0
   provider:
     name: IBM
-  version: 0.0.1
+  relatedImages:
+  - image: icr.io/cpopen/cpfs/mcsp-utils:1.0.0
+    name: mcsp-utils
+  - image: icr.io/cpopen/cpfs/account-iam:1.0.0
+    name: account-iam
+  - image: icr.io/cpopen/cpfs/mcsp-im-config-job:1.0.0
+    name: mcsp-im-config-job
+  - image: icr.io/cpopen/cpfs/api_service:1.0.0
+    name: api-service
+  - image: icr.io/cpopen/cpfs/instance_management_service:1.0.0
+    name: instance-management-service
+  version: 1.0.0

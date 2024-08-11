@@ -104,7 +104,8 @@ data:
 type: Opaque
 `
 
-const INGRESS = `kind: NetworkPolicy
+const INGRESS = `
+kind: NetworkPolicy
 apiVersion: networking.k8s.io/v1
 metadata:
   name: account-iam-ingress-allow
@@ -231,7 +232,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: dbmigrate
-          image: ACCOUNT_IAM_APP_IMAGE
+          image: RELATED_IMAGE_ACCOUNT_IAM
           envFrom:
             - secretRef:
                 name: account-iam-database-secret
@@ -304,7 +305,7 @@ spec:
   manageTLS: true
   networkPolicy:
     disable: true
-  applicationImage: ACCOUNT_IAM_APP_IMAGE
+  applicationImage: RELATED_IMAGE_ACCOUNT_IAM
   pullPolicy: Always
   replicas: 
   probes:

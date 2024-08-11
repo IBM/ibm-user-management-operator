@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
       - name: mcsp-im-config-job
-        image: MCSP_IM_CONFIG_JOB_IMAGE
+        image: RELATED_IMAGE_MCSP_IM_CONFIG_JOB
         command: ["./mcsp-im-config-job"]
         imagePullPolicy: Always
         securityContext:
@@ -35,10 +35,12 @@ spec:
             value: debug
           - name: NAMESPACE
             value: {{ .AccountIAMNamespace }}
-          - name: IM_HOST_URL
-            value: {{ .IAMHOSTURL }}
-          - name: ACCOUNT_IAM_URL
+          - name: IM_HOST_BASE_URL
+            value: {{ .IAMHostURL }}
+          - name: ACCOUNT_IAM_BASE_URL
             value: {{ .AccountIAMURL }}
+          - name: ACCOUNT_IAM_CONSOLE_BASE_URL
+            value: {{ .AccountIAMHostURL }}
       serviceAccountName: user-mgmt-operand-serviceaccount
       restartPolicy: OnFailure
 `
