@@ -487,17 +487,20 @@ func (r *AccountIAMReconciler) createOperandRBAC(ctx context.Context, instance *
 	klog.Infof("Creating or updating RBAC for user-mgmt operand")
 
 	for _, v := range res.OperandRBACs {
+		klog.Infof("this yaml is: %s", v)
 		object := &unstructured.Unstructured{}
-		v = replaceImages(v)
 		manifest := []byte(v)
 		if err := yaml.Unmarshal(manifest, object); err != nil {
+			klog.Infof("1")
 			return err
 		}
 		object.SetNamespace(instance.Namespace)
 		if err := controllerutil.SetControllerReference(instance, object, r.Scheme); err != nil {
+			klog.Infof("2")
 			return err
 		}
 		if err := r.createOrUpdate(ctx, object); err != nil {
+			klog.Infof("3")
 			return err
 		}
 	}
