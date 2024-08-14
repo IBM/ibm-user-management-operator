@@ -122,6 +122,12 @@ config-docker: get-cluster-credentials
 # Test
 .PHONY: check
 check: ## @code Run the code check
+	which go
+	echo $(PATH)
+	ls /usr/local/go/bin
+	ls /usr/local/go/pkg/tool
+	ls /usr/local/go/pkg/tool/linux_amd64
+	go fmt ./...
 	@echo "Running check for the code."
 
 # Override default variable values or prerequisites from top level Makefile #
