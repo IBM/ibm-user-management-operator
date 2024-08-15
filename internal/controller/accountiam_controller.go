@@ -44,6 +44,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	operatorv1alpha1 "github.com/IBM/ibm-user-management-operator/api/v1alpha1"
+	"github.com/IBM/ibm-user-management-operator/internal/controller/utils"
 	"github.com/IBM/ibm-user-management-operator/internal/resources"
 	res "github.com/IBM/ibm-user-management-operator/internal/resources/yamls"
 	odlm "github.com/IBM/operand-deployment-lifecycle-manager/v4/api/v1alpha1"
@@ -218,7 +219,7 @@ func (r *AccountIAMReconciler) verifyPrereq(ctx context.Context, instance *opera
 		return err
 	}
 
-	if err := waitForOperatorReady(ctx, r.Client, resources.UserMgmtOpreq, instance.Namespace); err != nil {
+	if err := utils.WaitForOperatorReady(ctx, r.Client, resources.UserMgmtOpreq, instance.Namespace); err != nil {
 		klog.Errorf("Failed to wait for all operator ready in OperandRequest %s", resources.UserMgmtOpreq)
 		return err
 	}
@@ -229,12 +230,12 @@ func (r *AccountIAMReconciler) verifyPrereq(ctx context.Context, instance *opera
 		return err
 	}
 
-	if err := waitForOperandReady(ctx, r.Client, resources.UserMgmtOpreq, instance.Namespace); err != nil {
+	if err := utils.WaitForOperandReady(ctx, r.Client, resources.UserMgmtOpreq, instance.Namespace); err != nil {
 		klog.Infof("Failed to wait for all operand ready in OperandRequest %s", resources.UserMgmtOpreq)
 		return err
 	}
 
-	existWebsphere, err := CheckCRD(r.Config, resources.WebSphereAPIGroupVersion, resources.WebSphereKind)
+	existWebsphere, err := utils.CheckCRD(r.Config, resources.WebSphereAPIGroupVersion, resources.WebSphereKind)
 	if err != nil {
 		return err
 	}
@@ -244,22 +245,21 @@ func (r *AccountIAMReconciler) verifyPrereq(ctx context.Context, instance *opera
 
 	// Generate PG password
 	klog.Info("Generating PG password")
-	pgPassword, err := generatePassword(20)
-
+	pgPassword, err := utils.RandStrings(20)
 	if err != nil {
 		return err
 	}
 
 	// Get cp-console route
 	klog.Info("Getting cp-console route")
-	host, err := getHost(ctx, r.Client, "cp-console", instance.Namespace)
+	host, err := utils.GetHost(ctx, r.Client, "cp-console", instance.Namespace)
 	if err != nil {
 		return err
 	}
 
 	// Create bootstrap secret
 	klog.Info("Creating bootstrap secret")
-	bootstrapsecret, err := r.initBootstrapData(ctx, instance.Namespace, pgPassword, host)
+	bootstrapsecret, err := r.initBootstrapData(ctx, instance.Namespace, pgPassword[0], host)
 	if err != nil {
 		return err
 	}
@@ -334,7 +334,7 @@ func (r *AccountIAMReconciler) createOperandRequest(ctx context.Context, instanc
 func (r *AccountIAMReconciler) createRedisCR(ctx context.Context, instance *operatorv1alpha1.AccountIAM) error {
 
 	// Check if Redis CRD exists
-	existRedis, err := CheckCRD(r.Config, concat(resources.RedisAPIGroup, "/", resources.RedisVersion), resources.RedisKind)
+	existRedis, err := utils.CheckCRD(r.Config, utils.Concat(resources.RedisAPIGroup, "/", resources.RedisVersion), resources.RedisKind)
 	if err != nil {
 		return err
 	}
@@ -355,7 +355,7 @@ func (r *AccountIAMReconciler) createRedisCR(ctx context.Context, instance *oper
 	}
 
 	// Wait for Redis CR to be ready
-	if err := waitForRediscp(ctx, r.Client, instance.Namespace, resources.Rediscp, resources.RedisAPIGroup, resources.RedisKind, resources.RedisVersion, resources.OperandStatusComp); err != nil {
+	if err := utils.WaitForRediscp(ctx, r.Client, instance.Namespace, resources.Rediscp, resources.RedisAPIGroup, resources.RedisKind, resources.RedisVersion, resources.OperandStatusComp); err != nil {
 		return err
 	}
 	return nil
@@ -371,6 +371,13 @@ func (r *AccountIAMReconciler) initBootstrapData(ctx context.Context, ns string,
 		}
 
 		accountIAMHost := strings.Replace(host, "cp-console", "account-iam-console", 1)
+		clientVars, err := utils.RandStrings(8, 8)
+		if err != nil {
+			return nil, err
+		}
+		clinetID := clientVars[0]
+		clientSecret := clientVars[1]
+
 		klog.Info("Creating bootstrap secret with PG password")
 		newsecret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
@@ -379,17 +386,17 @@ func (r *AccountIAMReconciler) initBootstrapData(ctx context.Context, ns string,
 			},
 			Data: map[string][]byte{
 				"Realm":               []byte("PrimaryRealm"),
-				"ClientID":            []byte("mcsp-id"),
-				"ClientSecret":        []byte("mcsp-secret"),
+				"ClientID":            clinetID,
+				"ClientSecret":        clientSecret,
 				"DiscoveryEndpoint":   []byte("https://" + host + "/idprovider/v1/auth/.well-known/openid-configuration"),
 				"UserValidationAPIV2": []byte("https://openshift.default.svc/apis/user.openshift.io/v1/users/~"),
-				"DefaultAUDValue":     []byte("mcsp-id"),
+				"DefaultAUDValue":     clinetID,
 				"DefaultIDPValue":     []byte("https://" + host + "/idprovider/v1/auth"),
 				"DefaultRealmValue":   []byte("PrimaryRealm"),
 				"SREMCSPGroupsToken":  []byte("mcsp-im-integration-admin"),
 				"GlobalRealmValue":    []byte("PrimaryRealm"),
 				"GlobalAccountIDP":    []byte("https://" + host + "/idprovider/v1/auth"),
-				"GlobalAccountAud":    []byte("mcsp-id"),
+				"GlobalAccountAud":    clinetID,
 				"AccountIAMNamespace": []byte(ns),
 				"PGPassword":          pg,
 				"IAMHostURL":          []byte("https://" + host),
@@ -482,7 +489,7 @@ func (r *AccountIAMReconciler) reconcileOperandResources(ctx context.Context, in
 	// TODO: will need to find a better place to initialize the database
 	klog.Infof("Applying DB Bootstrap Job")
 	object := &unstructured.Unstructured{}
-	resource := replaceImages(res.DB_BOOTSTRAP_JOB)
+	resource := utils.ReplaceImages(res.DB_BOOTSTRAP_JOB)
 	manifest := []byte(resource)
 	if err := yaml.Unmarshal(manifest, object); err != nil {
 		return err
@@ -497,6 +504,23 @@ func (r *AccountIAMReconciler) reconcileOperandResources(ctx context.Context, in
 
 	// Manifests which need data injected before creation
 	klog.Infof("Creating MCSP secrets")
+	// Get WLP client ID
+	wlpClientID, err := utils.GetSecretData(ctx, r.Client, resources.IMOIDCCrendential, instance.Namespace, resources.WLPClientID)
+	if err != nil {
+		klog.Errorf("Failed to get WLP client ID from secret %s in namespace %s", resources.IMOIDCCrendential, instance.Namespace)
+		return err
+	}
+	decodedGlobalAud, err := base64.StdEncoding.DecodeString(BootstrapData.GlobalAccountAud)
+	if err != nil {
+		return err
+	}
+	decodedDefaultAud, err := base64.StdEncoding.DecodeString(BootstrapData.DefaultAUDValue)
+	if err != nil {
+		return err
+	}
+
+	BootstrapData.GlobalAccountAud = base64.StdEncoding.EncodeToString([]byte(string(decodedGlobalAud) + "," + wlpClientID))
+	BootstrapData.DefaultAUDValue = base64.StdEncoding.EncodeToString([]byte(string(decodedDefaultAud) + "," + wlpClientID))
 	if err := r.injectData(ctx, instance, res.APP_SECRETS, BootstrapData); err != nil {
 		return err
 	}
@@ -513,10 +537,9 @@ func (r *AccountIAMReconciler) reconcileOperandResources(ctx context.Context, in
 
 	// static manifests which do not change
 	klog.Infof("Creating MCSP static yamls")
-	staticYamls := append(res.APP_STATIC_YAMLS, res.CertRotationYamls...)
-	for _, v := range staticYamls {
+	for _, v := range res.APP_STATIC_YAMLS {
 		object := &unstructured.Unstructured{}
-		v = replaceImages(v)
+		v = utils.ReplaceImages(v)
 		manifest := []byte(v)
 		if err := yaml.Unmarshal(manifest, object); err != nil {
 			return err
@@ -574,7 +597,7 @@ func (r *AccountIAMReconciler) injectData(ctx context.Context, instance *operato
 		buffer.Reset()
 
 		// Parse the manifest template and execute it with the provided bootstrap data
-		manifest = replaceImages(manifest)
+		manifest = utils.ReplaceImages(manifest)
 		t := template.Must(template.New("template resrouces").Parse(manifest))
 		if err := t.Execute(&buffer, data); err != nil {
 			return err
@@ -633,7 +656,7 @@ func (r *AccountIAMReconciler) restartAndCheckPod(ctx context.Context, ns, label
 
 	time.Sleep(10 * time.Second)
 
-	if err := waitForDeploymentReady(ctx, r.Client, ns, label); err != nil {
+	if err := utils.WaitForDeploymentReady(ctx, r.Client, ns, label); err != nil {
 		klog.Error("Failed to wait for Deployment %s to be ready in namespace %s", label, ns)
 		return err
 	}
@@ -664,7 +687,7 @@ func (r *AccountIAMReconciler) getPodName(ctx context.Context, namespace, label 
 
 func (r *AccountIAMReconciler) configIM(ctx context.Context, instance *operatorv1alpha1.AccountIAM) error {
 
-	host, err := getHost(ctx, r.Client, "account-iam", instance.Namespace)
+	host, err := utils.GetHost(ctx, r.Client, "account-iam", instance.Namespace)
 	if err != nil {
 		return err
 	}
@@ -683,7 +706,7 @@ func (r *AccountIAMReconciler) configIM(ctx context.Context, instance *operatorv
 		return err
 	}
 
-	if err := waitForJob(ctx, r.Client, instance.Namespace, resources.IMConfigJob); err != nil {
+	if err := utils.WaitForJob(ctx, r.Client, instance.Namespace, resources.IMConfigJob); err != nil {
 		klog.Error("Failed to wait for IM Config Job to be succeeded")
 		return err
 	}
@@ -730,7 +753,7 @@ func (r *AccountIAMReconciler) reconcileUI(ctx context.Context, instance *operat
 
 	for _, v := range res.StaticYamlsUI {
 		object := &unstructured.Unstructured{}
-		v = replaceImages(v)
+		v = utils.ReplaceImages(v)
 		manifest := []byte(v)
 		if err := yaml.Unmarshal(manifest, object); err != nil {
 			return err
@@ -765,7 +788,7 @@ func (r *AccountIAMReconciler) initUIBootstrapData(ctx context.Context, instance
 	klog.Infof("domain: %s", domain)
 
 	// Get the API key
-	apiKey, err := getSecretData(ctx, r.Client, resources.IMAPISecret, instance.Namespace, resources.IMAPIKey)
+	apiKey, err := utils.GetSecretData(ctx, r.Client, resources.IMAPISecret, instance.Namespace, resources.IMAPIKey)
 	if err != nil {
 		klog.Errorf("Failed to get secret %s in namespace %s: %v", resources.IMAPISecret, instance.Namespace, err)
 		return err
@@ -773,28 +796,25 @@ func (r *AccountIAMReconciler) initUIBootstrapData(ctx context.Context, instance
 	klog.Infof("apiKey: %s", apiKey)
 
 	// Get the Redis URL SSL
-	redisURlssl, err := getSecretData(ctx, r.Client, resources.Rediscp, instance.Namespace, resources.RedisURLssl)
+	redisURlssl, err := utils.GetSecretData(ctx, r.Client, resources.Rediscp, instance.Namespace, resources.RedisURLssl)
 	if err != nil {
 		klog.Errorf("Failed to get secret %s in namespace %s: %v", resources.Rediscp, instance.Namespace, err)
 		return err
 	}
-	redisURlssl = insertColonInURL(redisURlssl)
+	redisURlssl = utils.InsertColonInURL(redisURlssl)
 	klog.Infof("redisURlssl: %s", redisURlssl)
 
 	// get Redis cert
-	redisCert, err := getSecretData(ctx, r.Client, resources.RedisCert, instance.Namespace, resources.RedisCertKey)
+	redisCert, err := utils.GetSecretData(ctx, r.Client, resources.RedisCert, instance.Namespace, resources.RedisCertKey)
 	if err != nil {
 		klog.Errorf("Failed to get secret %s in namespace %s: %v", resources.RedisCert, instance.Namespace, err)
 		return err
-	} else {
-		klog.Infof("redisCert: %s", redisCert)
 	}
 
-	SessionSecret, err := generatePassword(48)
+	SessionSecret, err := utils.RandStrings(48)
 	if err != nil {
 		return err
 	}
-	klog.Info("SessionSecret: ", string(SessionSecret))
 
 	decodedClientID, err := base64.StdEncoding.DecodeString(BootstrapData.ClientID)
 	if err != nil {
@@ -806,22 +826,22 @@ func (r *AccountIAMReconciler) initUIBootstrapData(ctx context.Context, instance
 	}
 
 	UIBootstrapData = UIBootstrapTemplate{
-		Hostname:                   concat("account-iam-console-", instance.Namespace, ".apps.", domain),
-		InstanceManagementHostname: concat("account-iam-console-", instance.Namespace, ".apps.", domain),
+		Hostname:                   utils.Concat("account-iam-console-", instance.Namespace, ".apps.", domain),
+		InstanceManagementHostname: utils.Concat("account-iam-console-", instance.Namespace, ".apps.", domain),
 		ClientID:                   string(decodedClientID),
 		ClientSecret:               string(decodedClientSecret),
 		IAMGlobalAPIKey:            string(apiKey),
 		RedisHost:                  redisURlssl,
 		RedisCA:                    redisCert,
-		SessionSecret:              string(SessionSecret),
+		SessionSecret:              string(SessionSecret[0]),
 		DeploymentCloud:            "IBM_CLOUD",
-		IAMAPI:                     concat("https://account-iam-", instance.Namespace, ".apps.", domain),
+		IAMAPI:                     utils.Concat("https://account-iam-", instance.Namespace, ".apps.", domain),
 		NodeEnv:                    "production",
 		CertDir:                    "../../security",
 		ConfigEnv:                  "dev",
-		IssuerBaseURL:              concat(cpconsole, "/idprovider/v1/auth"),
+		IssuerBaseURL:              utils.Concat(cpconsole, "/idprovider/v1/auth"),
 		IMIDMgmt:                   cpconsole,
-		CSIDPURL:                   concat(cpconsole, "/common-nav/identity-access/realms"),
+		CSIDPURL:                   utils.Concat(cpconsole, "/common-nav/identity-access/realms"),
 		OnPremAccount:              "default-account",
 		OnPremInstance:             "default-service",
 	}
@@ -832,15 +852,6 @@ func (r *AccountIAMReconciler) initUIBootstrapData(ctx context.Context, instance
 // -------------- Reconcile UI functions done --------------
 
 func (r *AccountIAMReconciler) createOrUpdate(ctx context.Context, obj *unstructured.Unstructured) error {
-	// err := r.Update(ctx, obj)
-	// if err != nil {
-	// 	if !k8serrors.IsNotFound(err) {
-	// 		return err
-	// 	}
-	// }
-	// if err == nil {
-	// 	return nil
-	// }
 
 	// only reachable if update DID see error IsNotFound
 	err := r.Create(ctx, obj)
