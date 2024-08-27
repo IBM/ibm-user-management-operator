@@ -142,7 +142,6 @@ var UIBootstrapData UIBootstrapTemplate
 //+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=liberty.websphere.ibm.com,resources=webspherelibertyapplications,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings;roles,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=security.openshift.io,resources=securitycontextconstraints,verbs=use
@@ -208,9 +207,9 @@ func (r *AccountIAMReconciler) verifyPrereq(ctx context.Context, instance *opera
 		return err
 	}
 
-	operatorNames := []string{resources.WebSpherePackage, resources.RedisOperator, resources.IMPackage}
+	operatorNames := []string{resources.RedisOperator, resources.IMPackage}
 
-	// Request WebSphere, IM operator and wait for their status
+	// Request IM operator and wait for their status
 	if err := r.createOperandRequest(ctx, instance, resources.UserMgmtOpreq, operatorNames); err != nil {
 		return err
 	}
@@ -233,14 +232,6 @@ func (r *AccountIAMReconciler) verifyPrereq(ctx context.Context, instance *opera
 	if err := utils.WaitForOperandReady(ctx, r.Client, resources.UserMgmtOpreq, instance.Namespace); err != nil {
 		klog.Infof("Failed to wait for all operand ready in OperandRequest %s", resources.UserMgmtOpreq)
 		return err
-	}
-
-	existWebsphere, err := utils.CheckCRD(r.Config, resources.WebSphereAPIGroupVersion, resources.WebSphereKind)
-	if err != nil {
-		return err
-	}
-	if !existWebsphere {
-		return errors.New("Missing WebSphereLibertyApplication CRD")
 	}
 
 	// Generate PG password
@@ -528,6 +519,23 @@ func (r *AccountIAMReconciler) reconcileOperandResources(ctx context.Context, in
 	// static manifests which do not change
 	klog.Infof("Creating MCSP static yamls")
 	for _, v := range res.APP_STATIC_YAMLS {
+		object := &unstructured.Unstructured{}
+		v = utils.ReplaceImages(v)
+		manifest := []byte(v)
+		if err := yaml.Unmarshal(manifest, object); err != nil {
+			return err
+		}
+		object.SetNamespace(instance.Namespace)
+		if err := controllerutil.SetControllerReference(instance, object, r.Scheme); err != nil {
+			return err
+		}
+		if err := r.createOrUpdate(ctx, object); err != nil {
+			return err
+		}
+	}
+
+	klog.Infof("Creating Account IAM yamls")
+	for _, v := range res.ACCOUNT_IAM_RES {
 		object := &unstructured.Unstructured{}
 		v = utils.ReplaceImages(v)
 		manifest := []byte(v)
