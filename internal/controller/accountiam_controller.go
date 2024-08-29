@@ -62,26 +62,33 @@ type AccountIAMReconciler struct {
 
 // BootstrapSecret stores all the bootstrap secret data
 type BootstrapSecret struct {
-	Realm               string
-	ClientID            string
-	ClientSecret        string
-	DiscoveryEndpoint   string
-	PGPassword          string
-	DefaultAUDValue     string
-	DefaultIDPValue     string
-	DefaultRealmValue   string
-	SREMCSPGroupsToken  string
-	GlobalRealmValue    string
-	GlobalAccountIDP    string
-	GlobalAccountAud    string
-	UserValidationAPIV2 string
-	IAMHostURL          string
-	AccountIAMURL       string
-	AccountIAMHostURL   string
-	AccountIAMNamespace string
+	Realm                string
+	ClientID             string
+	ClientSecret         string
+	DiscoveryEndpoint    string
+	PGPassword           string
+	DefaultAUDValue      string
+	DefaultIDPValue      string
+	DefaultRealmValue    string
+	SREMCSPGroupsToken   string
+	GlobalRealmValue     string
+	GlobalAccountIDP     string
+	GlobalAccountAud     string
+	UserValidationAPIV2  string
+	IAMHostURL           string
+	AccountIAMURL        string
+	AccountIAMConsoleURL string
+	AccountIAMNamespace  string
 }
 
 var BootstrapData BootstrapSecret
+
+// RouteData holds the parameters for the Route CR
+type RouteParams struct {
+	CAcert string
+}
+
+var RouteData RouteParams
 
 // RedisCRParams holds the parameters for the Redis CR
 type RedisCRParams struct {
@@ -361,7 +368,7 @@ func (r *AccountIAMReconciler) initBootstrapData(ctx context.Context, ns string,
 			return nil, err
 		}
 
-		accountIAMHost := strings.Replace(host, "cp-console", "account-iam-console", 1)
+		accountIAMUIHost := strings.Replace(host, "cp-console", "account-iam-console", 1)
 		clientVars, err := utils.RandStrings(8, 8)
 		if err != nil {
 			return nil, err
@@ -376,22 +383,22 @@ func (r *AccountIAMReconciler) initBootstrapData(ctx context.Context, ns string,
 				Namespace: ns,
 			},
 			Data: map[string][]byte{
-				"Realm":               []byte("PrimaryRealm"),
-				"ClientID":            clinetID,
-				"ClientSecret":        clientSecret,
-				"DiscoveryEndpoint":   []byte("https://" + host + "/idprovider/v1/auth/.well-known/openid-configuration"),
-				"UserValidationAPIV2": []byte("https://openshift.default.svc/apis/user.openshift.io/v1/users/~"),
-				"DefaultAUDValue":     clinetID,
-				"DefaultIDPValue":     []byte("https://" + host + "/idprovider/v1/auth"),
-				"DefaultRealmValue":   []byte("PrimaryRealm"),
-				"SREMCSPGroupsToken":  []byte("mcsp-im-integration-admin"),
-				"GlobalRealmValue":    []byte("PrimaryRealm"),
-				"GlobalAccountIDP":    []byte("https://" + host + "/idprovider/v1/auth"),
-				"GlobalAccountAud":    clinetID,
-				"AccountIAMNamespace": []byte(ns),
-				"PGPassword":          pg,
-				"IAMHostURL":          []byte("https://" + host),
-				"AccountIAMHostURL":   []byte("https://" + accountIAMHost),
+				"Realm":                []byte("PrimaryRealm"),
+				"ClientID":             clinetID,
+				"ClientSecret":         clientSecret,
+				"DiscoveryEndpoint":    []byte("https://" + host + "/idprovider/v1/auth/.well-known/openid-configuration"),
+				"UserValidationAPIV2":  []byte("https://openshift.default.svc/apis/user.openshift.io/v1/users/~"),
+				"DefaultAUDValue":      clinetID,
+				"DefaultIDPValue":      []byte("https://" + host + "/idprovider/v1/auth"),
+				"DefaultRealmValue":    []byte("PrimaryRealm"),
+				"SREMCSPGroupsToken":   []byte("mcsp-im-integration-admin"),
+				"GlobalRealmValue":     []byte("PrimaryRealm"),
+				"GlobalAccountIDP":     []byte("https://" + host + "/idprovider/v1/auth"),
+				"GlobalAccountAud":     clinetID,
+				"AccountIAMNamespace":  []byte(ns),
+				"PGPassword":           pg,
+				"IAMHostURL":           []byte("https://" + host),
+				"AccountIAMConsoleURL": []byte("https://" + accountIAMUIHost),
 			},
 			Type: corev1.SecretTypeOpaque,
 		}
@@ -551,6 +558,21 @@ func (r *AccountIAMReconciler) reconcileOperandResources(ctx context.Context, in
 		}
 	}
 
+	klog.Infof("Creating Account IAM Routes")
+	caCRT, err := utils.GetSecretData(ctx, r.Client, resources.AccountIAMsvc, instance.Namespace, "ca.crt")
+	if err != nil {
+		klog.Errorf("Failed to get ca.crt from secret %s in namespace %s", resources.AccountIAMsvc, instance.Namespace)
+		return err
+	}
+
+	RouteData := RouteParams{
+		CAcert: utils.IndentCert(caCRT, 6),
+	}
+
+	if err := r.injectData(ctx, instance, res.ACCOUNT_IAM_ROUTE_RES, RouteData); err != nil {
+		return err
+	}
+
 	// Temporary update issuer in platform-auth-idp configmap
 	klog.Infof("Updating platform-auth-idp configmap")
 	idpconfig := &corev1.ConfigMap{}
@@ -696,8 +718,7 @@ func (r *AccountIAMReconciler) configIM(ctx context.Context, instance *operatorv
 	}
 
 	mcspHost := "https://" + host
-	encodedURL := base64.StdEncoding.EncodeToString([]byte(mcspHost))
-	BootstrapData.AccountIAMURL = encodedURL
+	BootstrapData.AccountIAMURL = base64.StdEncoding.EncodeToString([]byte(mcspHost))
 
 	klog.Infof("Applying IM Config Job")
 	decodedData, err := r.decodeData(BootstrapData)

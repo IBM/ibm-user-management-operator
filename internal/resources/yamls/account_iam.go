@@ -8,6 +8,9 @@ var ACCOUNT_IAM_RES = []string{
 	ACCOUNT_IAM_SERVICE_ACCOUNT,
 	ACCOUNT_IAM_SERVICE,
 	ACCOUNT_IAM_DEPLOYMENT,
+}
+
+var ACCOUNT_IAM_ROUTE_RES = []string{
 	ACCOUNT_IAM_ROUTE,
 }
 
@@ -143,9 +146,24 @@ spec:
         component-name: iam-services
         for-product: all
     spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 50
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/instance: account-iam
+              topologyKey: topology.kubernetes.io/zone
+          - weight: 50
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/instance: account-iam
+              topologyKey: kubernetes.io/hostname
       containers:
       - name: app
-        image: icr.io/automation-saas-platform/access-management/account-iam:20240819135403-development-3f8f7784573adb1cc350ff25fdfc14c9b7a640f1
+        image: RELATED_IMAGE_ACCOUNT_IAM
         imagePullPolicy: Always
         env:
         - name: cert_defaultKeyStore
@@ -176,19 +194,28 @@ spec:
             path: /api/2.0/health/liveness
             port: 9445
             scheme: HTTPS
+          timeoutSeconds: 5
           periodSeconds: 10
+          successThreshold: 1
+          failureThreshold: 5
         readinessProbe:
           httpGet:
             path: /api/2.0/health/readiness
             port: 9445
             scheme: HTTPS
+          timeoutSeconds: 5
           periodSeconds: 10
+          successThreshold: 1
+          failureThreshold: 3
         startupProbe:
           httpGet:
             path: /api/2.0/health/started
             port: 9445
             scheme: HTTPS
+          timeoutSeconds: 5
           periodSeconds: 10
+          successThreshold: 1
+          failureThreshold: 60
         resources:
           limits:
             cpu: 1500m
@@ -197,8 +224,15 @@ spec:
             cpu: 300m
             memory: 400Mi
         securityContext:
-          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+          privileged: false
           runAsNonRoot: true
+          readOnlyRootFilesystem: false
+          allowPrivilegeEscalation: false
+          seccompProfile:
+            type: RuntimeDefault
         volumeMounts:
         - mountPath: /var/run/secrets/tokens
           name: account-iam-token
@@ -215,11 +249,25 @@ spec:
           name: svc-certificate
           readOnly: true
       serviceAccountName: account-iam
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/instance: account-iam
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/instance: account-iam
       volumes:
       - name: account-iam-token
         projected:
           sources:
           - serviceAccountToken:
+              audience: openshift
               path: account-iam-token
       - name: account-iam-oidc
         secret:
@@ -256,11 +304,12 @@ metadata:
     component-name: iam-services
     for-product: all
 spec:
-  host: account-iam-mcsp1.apps.cutie1.cp.fyre.ibm.com
   port:
     targetPort: 9445-tcp
   tls:
     termination: reencrypt
+    destinationCACertificate: |-
+{{ .CAcert }}
   to:
     kind: Service
     name: account-iam
