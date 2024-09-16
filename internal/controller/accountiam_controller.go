@@ -339,6 +339,22 @@ func (r *AccountIAMReconciler) createRedisCR(ctx context.Context, instance *oper
 		return errors.New("Redis CRD not found")
 	}
 
+	klog.Infof("Creating Redis certificate")
+	for _, v := range res.REDIS_CERTS {
+		object := &unstructured.Unstructured{}
+		manifest := []byte(v)
+		if err := yaml.Unmarshal(manifest, object); err != nil {
+			return err
+		}
+		object.SetNamespace(instance.Namespace)
+		if err := controllerutil.SetControllerReference(instance, object, r.Scheme); err != nil {
+			return err
+		}
+		if err := r.createOrUpdate(ctx, object); err != nil {
+			return err
+		}
+	}
+
 	// Create Redis CR
 	klog.Infof("Redis CRD exists, creating Redis CR %s in namespace %s", resources.Rediscp, instance.Namespace)
 	redisCRData := RedisCRParams{
