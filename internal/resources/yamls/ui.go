@@ -24,7 +24,7 @@ metadata:
   name: account-iam-ui-ca-issuer
 spec:
   ca:
-    secretName: cs-ca-certificate
+    secretName: cs-ca-certificate-secret
 `
 
 var UI_CA_CERT = `
@@ -511,5 +511,4 @@ spec:
               - key: 'service-ca.crt'
                 path: ca.crt
       serviceAccountName: user-mgmt-operand-serviceaccount
-
 `

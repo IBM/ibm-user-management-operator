@@ -28,7 +28,7 @@ metadata:
   name: account-iam-ui-redis-ca-issuer
 spec:
   ca:
-    secretName: cs-ca-certificate
+    secretName: cs-ca-certificate-secret
 `
 
 var REDIS_CA_CERT = `

@@ -20,7 +20,7 @@ metadata:
   name: account-iam-ca-issuer
 spec:
   ca:
-    secretName: cs-ca-certificate
+    secretName: cs-ca-certificate-secret
 `
 
 var ACCOUNT_IAM_CA_CERT = `
@@ -55,7 +55,6 @@ spec:
     name: account-iam-ca-issuer
     kind: Issuer
     group: cert-manager.io
-  
 `
 
 var ACCOUNT_IAM_SERVICE_ACCOUNT = `
