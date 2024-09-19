@@ -132,8 +132,8 @@ type UIBootstrapTemplate struct {
 	ProductRegistrationPassword string
 	IMIDMgmt                    string
 	CSIDPURL                    string
-	OnPremAccount               string
-	OnPremInstance              string
+	DefaultAccount              string
+	DefaultInstance             string
 }
 
 var UIBootstrapData UIBootstrapTemplate
@@ -861,8 +861,8 @@ func (r *AccountIAMReconciler) initUIBootstrapData(ctx context.Context, instance
 		IssuerBaseURL:              utils.Concat(cpconsole, "/idprovider/v1/auth"),
 		IMIDMgmt:                   cpconsole,
 		CSIDPURL:                   utils.Concat(cpconsole, "/common-nav/identity-access/realms"),
-		OnPremAccount:              "default-account",
-		OnPremInstance:             "default-service",
+		DefaultAccount:             "default-account",
+		DefaultInstance:            "default-service",
 	}
 
 	return nil
