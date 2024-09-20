@@ -293,14 +293,10 @@ func (r *AccountIAMReconciler) createOperandRequest(ctx context.Context, instanc
 
 		klog.Infof("Creating OperandRequest %s in namespace %s", name, instance.Namespace)
 
-		operandReq := &odlm.OperandRequest{
+		operandRequest = &odlm.OperandRequest{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: name,
-				// Labels: map[string]string{
-				// 	"app.kubernetes.io/instance":   "operand-deployment-lifecycle-manager",
-				// 	"app.kubernetes.io/managed-by": "operand-deployment-lifecycle-manager",
-				// 	"app.kubernetes.io/name":       "operand-deployment-lifecycle-manager",
-				// },
+				Name:      name,
+				Namespace: instance.Namespace,
 			},
 			Spec: odlm.OperandRequestSpec{
 				Requests: []odlm.Request{
@@ -312,19 +308,37 @@ func (r *AccountIAMReconciler) createOperandRequest(ctx context.Context, instanc
 			},
 		}
 
-		operandReq.SetNamespace(instance.Namespace)
-		if err := controllerutil.SetControllerReference(instance, operandReq, r.Scheme); err != nil {
+		if err := controllerutil.SetControllerReference(instance, operandRequest, r.Scheme); err != nil {
 			return err
 		}
 
-		if err := r.Create(ctx, operandReq); err != nil {
+		if err := r.Create(ctx, operandRequest); err != nil {
 			if !k8serrors.IsAlreadyExists(err) {
+				return err
+			}
+		}
+
+		klog.Infof("Successfully created OperandRequest %s in namespace %s", name, instance.Namespace)
+	} else {
+		// OperandRequest already exists; check and set owner reference if needed
+		needsUpdate := false
+
+		// Check if the owner reference is missing or incorrect
+		if !metav1.IsControlledBy(operandRequest, instance) {
+			klog.V(2).Infof("Setting controller reference for OperandRequest %s", operandRequest.Name)
+			if err := controllerutil.SetControllerReference(instance, operandRequest, r.Scheme); err != nil {
+				return err
+			}
+			needsUpdate = true
+		}
+
+		if needsUpdate {
+			if err := r.Update(ctx, operandRequest); err != nil {
 				return err
 			}
 		}
 	}
 
-	klog.Infof("Successfully created OperandRequest %s in namespace %s", name, instance.Namespace)
 	return nil
 }
 
