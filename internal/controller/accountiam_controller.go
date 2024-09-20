@@ -586,7 +586,7 @@ func (r *AccountIAMReconciler) reconcileOperandResources(ctx context.Context, in
 	}
 
 	klog.Infof("Creating Account IAM Routes")
-	caCRT, err := utils.GetSecretData(ctx, r.Client, resources.CSCASecret, instance.Namespace, "ca.crt")
+	caCRT, err := utils.GetSecretData(ctx, r.Client, resources.AccountIAMCACert, instance.Namespace, resources.CAKey)
 	if err != nil {
 		klog.Errorf("Failed to get ca.crt from secret %s in namespace %s", resources.CSCASecret, instance.Namespace)
 		return err
@@ -823,7 +823,7 @@ func (r *AccountIAMReconciler) initUIBootstrapData(ctx context.Context, instance
 	redisURlssl = utils.InsertColonInURL(redisURlssl)
 
 	// get Redis Certificate Authority
-	caCRT, err := utils.GetSecretData(ctx, r.Client, resources.CSCASecret, instance.Namespace, "ca.crt")
+	caCRT, err := utils.GetSecretData(ctx, r.Client, resources.RedisCACert, instance.Namespace, resources.CAKey)
 	if err != nil {
 		klog.Errorf("Failed to get ca.crt from secret %s in namespace %s", resources.CSCASecret, instance.Namespace)
 		return err
