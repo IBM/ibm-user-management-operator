@@ -79,17 +79,19 @@ var BootstrapData BootstrapSecret
 
 // IntegrationConfig stores all the integration data for MCSP secret and IM integration
 type IntegrationConfig struct {
-	DiscoveryEndpoint    string
-	DefaultIDPValue      string
-	GlobalAccountIDP     string
-	AccountName          string
-	ServiceName          string
-	ServiceIDName        string
-	SubscriptionName     string
-	IMURL                string
-	AccountIAMURL        string
-	AccountIAMConsoleURL string
-	AccountIAMNamespace  string
+	DiscoveryEndpoint       string
+	DefaultIDPValue         string
+	GlobalAccountIDP        string
+	AccountName             string
+	ServiceName             string
+	ServiceIDName           string
+	SubscriptionName        string
+	IMURL                   string
+	AccountIAMURL           string
+	AccountIAMConsoleURL    string
+	AccountIAMNamespace     string
+	EncryptionKeys          string
+	CurrentEncryptionKeyNum string
 }
 
 var IntegrationData IntegrationConfig
@@ -353,11 +355,9 @@ func (r *AccountIAMReconciler) createOperandRequest(ctx context.Context, instanc
 func (r *AccountIAMReconciler) createRedisCR(ctx context.Context, instance *operatorv1alpha1.AccountIAM) error {
 
 	// Check if Redis CRD exists
-	existRedis, err := utils.CheckCRD(r.Config, utils.Concat(resources.RedisAPIGroup, "/", resources.RedisVersion), resources.RedisKind)
-	if err != nil {
+	if existRedis, err := utils.CheckCRD(r.Config, utils.Concat(resources.RedisAPIGroup, "/", resources.RedisVersion), resources.RedisKind); err != nil {
 		return err
-	}
-	if !existRedis {
+	} else if !existRedis {
 		return errors.New("redis CRD not found")
 	}
 
@@ -449,18 +449,26 @@ func (r *AccountIAMReconciler) initMCSPData(ns string, host string) error {
 	accountIAMHost := strings.Replace(host, "cp-console", "account-iam", 1)
 	accountIAMUIHost := strings.Replace(host, "cp-console", "account-iam-console", 1)
 
+	// Generate a 256-bit (32 bytes) encryption key
+	keys, err := utils.RandStrings(32)
+	if err != nil {
+		klog.Errorf("Failed to generate encryption key: %v", err)
+	}
+
 	IntegrationData = IntegrationConfig{
-		AccountName:          "default-account",
-		ServiceName:          "default-service",
-		ServiceIDName:        "default-serviceid",
-		SubscriptionName:     "default-subscription",
-		DiscoveryEndpoint:    utils.Concat("https://", host, "/idprovider/v1/auth/.well-known/openid-configuration"),
-		DefaultIDPValue:      utils.Concat("https://", host, "/idprovider/v1/auth"),
-		GlobalAccountIDP:     utils.Concat("https://", host, "/idprovider/v1/auth"),
-		AccountIAMNamespace:  ns,
-		IMURL:                utils.Concat("https://", host),
-		AccountIAMURL:        utils.Concat("https://", accountIAMHost),
-		AccountIAMConsoleURL: utils.Concat("https://", accountIAMUIHost),
+		AccountName:             "default-account",
+		ServiceName:             "default-service",
+		ServiceIDName:           "default-serviceid",
+		SubscriptionName:        "default-subscription",
+		DiscoveryEndpoint:       utils.Concat("https://", host, "/idprovider/v1/auth/.well-known/openid-configuration"),
+		DefaultIDPValue:         utils.Concat("https://", host, "/idprovider/v1/auth"),
+		GlobalAccountIDP:        utils.Concat("https://", host, "/idprovider/v1/auth"),
+		AccountIAMNamespace:     ns,
+		IMURL:                   utils.Concat("https://", host),
+		AccountIAMURL:           utils.Concat("https://", accountIAMHost),
+		AccountIAMConsoleURL:    utils.Concat("https://", accountIAMUIHost),
+		EncryptionKeys:          fmt.Sprintf(`[{keyNum: 1, key: %s}]`, string(keys[0])),
+		CurrentEncryptionKeyNum: "1",
 	}
 	return nil
 }
@@ -571,6 +579,8 @@ func (r *AccountIAMReconciler) reconcileOperandResources(ctx context.Context, in
 
 	BootstrapData.GlobalAccountAud = base64.StdEncoding.EncodeToString([]byte(string(decodedGlobalAud) + "," + wlpClientID))
 	BootstrapData.DefaultAUDValue = base64.StdEncoding.EncodeToString([]byte(string(decodedDefaultAud) + "," + wlpClientID))
+	IntegrationData.EncryptionKeys = base64.StdEncoding.EncodeToString([]byte(IntegrationData.EncryptionKeys))
+	IntegrationData.CurrentEncryptionKeyNum = base64.StdEncoding.EncodeToString([]byte(IntegrationData.CurrentEncryptionKeyNum))
 
 	if err := r.injectData(ctx, instance, append(res.APP_SECRETS, res.IM_INTEGRATION_YAMLS...), BootstrapData, IntegrationData); err != nil {
 		return err
