@@ -72,6 +72,6 @@ spec:
               secretKeyRef:
                 name: mcsp-im-integration-details
                 key: SERVICEID_NAME
-      serviceAccountName: mcsp-im-config-job
+      serviceAccountName: user-mgmt-operand-serviceaccount
       restartPolicy: OnFailure
 `
