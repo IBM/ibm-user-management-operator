@@ -36,8 +36,6 @@ func (r *AccountIAM) SetupWebhookWithManager(mgr ctrl.Manager) error {
 
 // TODO(user): EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 
-//+kubebuilder:webhook:path=/mutate-operator-ibm-com-v1alpha1-accountiam,mutating=true,failurePolicy=fail,sideEffects=None,groups=operator.ibm.com,resources=accountiams,verbs=create;update,versions=v1alpha1,name=maccountiam.kb.io,admissionReviewVersions=v1
-
 var _ webhook.Defaulter = &AccountIAM{}
 
 // Default implements webhook.Defaulter so a webhook will be registered for the type
