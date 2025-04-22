@@ -166,6 +166,7 @@ var UIBootstrapData UIBootstrapTemplate
 //+kubebuilder:rbac:groups=cert-manager.io,namespace="placeholder",resources=issuers;certificates,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",namespace="placeholder",resources=services,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=coordination.k8s.io,namespace="placeholder",resources=leases,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=operator.ibm.com,namespace="placeholder",resources=commonservices,verbs=get;list;watch;create;update;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -635,6 +636,7 @@ func (r *AccountIAMReconciler) reconcileOperandResources(ctx context.Context, in
 	if err := r.injectData(ctx, instance, res.ACCOUNT_IAM_ROUTE_RES, RouteData); err != nil {
 		return err
 	}
+
 	// Update issuer in CommonService CR
 	if err := r.configureIssuerViaCS(ctx); err != nil {
 		klog.Errorf("Failed to update issuer in CommonService CR: %v", err)
