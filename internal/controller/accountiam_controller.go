@@ -450,10 +450,34 @@ func (r *AccountIAMReconciler) initMCSPData(ns string, host string) error {
 	accountIAMHost := strings.Replace(host, "cp-console", "account-iam", 1)
 	accountIAMUIHost := strings.Replace(host, "cp-console", "account-iam-console", 1)
 
-	// Generate a 256-bit (32 bytes) encryption key
-	keys, err := utils.RandStrings(32)
-	if err != nil {
-		klog.Errorf("Failed to generate encryption key: %v", err)
+	existingSecret := &corev1.Secret{}
+	err := r.Client.Get(context.TODO(), types.NamespacedName{Name: resources.AccountIAMDBSecret, Namespace: ns}, existingSecret)
+
+	var encryptionKeys string
+	var currentKeyNum string
+
+	if err == nil && existingSecret.Data != nil {
+		if encKeys, ok := existingSecret.Data["ENCRYPTION_KEYS"]; ok && len(encKeys) > 0 {
+			encryptionKeys = string(encKeys)
+			klog.Infof("11111 Using existing encryption keys: %s", encryptionKeys)
+		}
+
+		if keyNum, ok := existingSecret.Data["CURRENT_ENCRYPTION_KEY_NUM"]; ok && len(keyNum) > 0 {
+			currentKeyNum = string(keyNum)
+			klog.Infof("22222 Using existing current key number: %s", currentKeyNum)
+		}
+	}
+
+	if encryptionKeys == "" || currentKeyNum == "" {
+		keys, genErr := utils.RandStrings(32)
+		if genErr != nil {
+			klog.Errorf("Failed to generate encryption key: %v", genErr)
+			return genErr
+		}
+
+		encryptionKeys = fmt.Sprintf(`[{keyNum: 1, key: %s}]`, string(keys[0]))
+		currentKeyNum = "1"
+		klog.Infof("33333 Generated new encryption keys: %s", encryptionKeys)
 	}
 
 	IntegrationData = IntegrationConfig{
@@ -468,8 +492,8 @@ func (r *AccountIAMReconciler) initMCSPData(ns string, host string) error {
 		IMURL:                   utils.Concat("https://", host),
 		AccountIAMURL:           utils.Concat("https://", accountIAMHost),
 		AccountIAMConsoleURL:    utils.Concat("https://", accountIAMUIHost),
-		EncryptionKeys:          fmt.Sprintf(`[{keyNum: 1, key: %s}]`, string(keys[0])),
-		CurrentEncryptionKeyNum: "1",
+		EncryptionKeys:          encryptionKeys,
+		CurrentEncryptionKeyNum: currentKeyNum,
 	}
 	return nil
 }
@@ -569,6 +593,7 @@ func (r *AccountIAMReconciler) reconcileOperandResources(ctx context.Context, in
 		klog.Errorf("Failed to get WLP client ID from secret %s in namespace %s", resources.IMOIDCCrendential, instance.Namespace)
 		return err
 	}
+
 	decodedGlobalAud, err := base64.StdEncoding.DecodeString(BootstrapData.GlobalAccountAud)
 	if err != nil {
 		return err
@@ -580,8 +605,15 @@ func (r *AccountIAMReconciler) reconcileOperandResources(ctx context.Context, in
 
 	BootstrapData.GlobalAccountAud = base64.StdEncoding.EncodeToString([]byte(string(decodedGlobalAud) + "," + wlpClientID))
 	BootstrapData.DefaultAUDValue = base64.StdEncoding.EncodeToString([]byte(string(decodedDefaultAud) + "," + wlpClientID))
-	IntegrationData.EncryptionKeys = base64.StdEncoding.EncodeToString([]byte(IntegrationData.EncryptionKeys))
-	IntegrationData.CurrentEncryptionKeyNum = base64.StdEncoding.EncodeToString([]byte(IntegrationData.CurrentEncryptionKeyNum))
+
+	klog.Infof("4444 integration data encryption keys: %s", IntegrationData.EncryptionKeys)
+	if !strings.HasPrefix(IntegrationData.EncryptionKeys, "eyJ") { // Check if already base64 encoded
+		IntegrationData.EncryptionKeys = base64.StdEncoding.EncodeToString([]byte(IntegrationData.EncryptionKeys))
+	}
+
+	if !strings.HasPrefix(IntegrationData.CurrentEncryptionKeyNum, "eyJ") { // Check if already base64 encoded
+		IntegrationData.CurrentEncryptionKeyNum = base64.StdEncoding.EncodeToString([]byte(IntegrationData.CurrentEncryptionKeyNum))
+	}
 
 	if err := r.injectData(ctx, instance, append(res.APP_SECRETS, res.IM_INTEGRATION_YAMLS...), BootstrapData, IntegrationData); err != nil {
 		return err
@@ -1162,7 +1194,7 @@ func (r *AccountIAMReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		//Owns(&corev1.ServiceAccount{}).
 		Owns(&routev1.Route{}).
 		Owns(&networkingv1.NetworkPolicy{}).
-		Owns(&batchv1.Job{}).
+		//Owns(&batchv1.Job{}).
 		Owns(&certmgrv1.Certificate{}).
 		Owns(&certmgrv1.Issuer{}).
 		Owns(&rbacv1.Role{}).
