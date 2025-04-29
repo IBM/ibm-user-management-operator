@@ -459,12 +459,10 @@ func (r *AccountIAMReconciler) initMCSPData(ns string, host string) error {
 	if err == nil && existingSecret.Data != nil {
 		if encKeys, ok := existingSecret.Data["ENCRYPTION_KEYS"]; ok && len(encKeys) > 0 {
 			encryptionKeys = string(encKeys)
-			klog.Infof("11111 Using existing encryption keys: %s", encryptionKeys)
 		}
 
 		if keyNum, ok := existingSecret.Data["CURRENT_ENCRYPTION_KEY_NUM"]; ok && len(keyNum) > 0 {
 			currentKeyNum = string(keyNum)
-			klog.Infof("22222 Using existing current key number: %s", currentKeyNum)
 		}
 	}
 
@@ -477,7 +475,6 @@ func (r *AccountIAMReconciler) initMCSPData(ns string, host string) error {
 
 		encryptionKeys = fmt.Sprintf(`[{keyNum: 1, key: %s}]`, string(keys[0]))
 		currentKeyNum = "1"
-		klog.Infof("33333 Generated new encryption keys: %s", encryptionKeys)
 	}
 
 	IntegrationData = IntegrationConfig{
@@ -512,27 +509,45 @@ func (r *AccountIAMReconciler) cleanJob(ctx context.Context, jobs []string, ns s
 			return err
 		}
 
-		// Check if the job is completed successfully
-		jobCompleted := false
+		// If the job failed, always delete it to allow retry
 		for _, condition := range job.Status.Conditions {
-			if condition.Type == batchv1.JobComplete && condition.Status == corev1.ConditionTrue {
-				klog.V(2).Infof("Job %s completed successfully, skipping deletion.", jobName)
-				jobCompleted = true
-				break
+			if condition.Type == batchv1.JobFailed && condition.Status == corev1.ConditionTrue {
+				klog.Infof("Job %s failed, will be cleaned up to allow retry", jobName)
+				background := metav1.DeletePropagationBackground
+				if err := r.Delete(ctx, job, &client.DeleteOptions{
+					PropagationPolicy: &background,
+				}); err != nil {
+					if !k8serrors.IsNotFound(err) {
+						return err
+					}
+				}
+				return nil
 			}
 		}
 
-		if jobCompleted {
-			continue
+		// Check if job is completed - don't delete completed jobs
+		for _, condition := range job.Status.Conditions {
+			if condition.Type == batchv1.JobComplete && condition.Status == corev1.ConditionTrue {
+				klog.Infof("Job %s completed successfully", jobName)
+				return nil
+			}
 		}
 
-		klog.Infof("Deleting incomplete job %s", jobName)
-		background := metav1.DeletePropagationBackground
-		if err := r.Delete(ctx, job, &client.DeleteOptions{
-			PropagationPolicy: &background,
-		}); err != nil {
-			if !k8serrors.IsNotFound(err) {
-				return err
+		// For jobs that are neither completed nor failed, let them continue running until timeout
+		if job.Status.StartTime != nil {
+			runningTime := time.Since(job.Status.StartTime.Time)
+			if runningTime > 10*time.Minute {
+				klog.Infof("Job %s has been running for %v, cleaning up", jobName, runningTime)
+				background := metav1.DeletePropagationBackground
+				if err := r.Delete(ctx, job, &client.DeleteOptions{
+					PropagationPolicy: &background,
+				}); err != nil {
+					if !k8serrors.IsNotFound(err) {
+						return err
+					}
+				}
+			} else {
+				klog.Infof("Job %s is still running for %v, allowing to continue", jobName, runningTime)
 			}
 		}
 	}
@@ -606,12 +621,13 @@ func (r *AccountIAMReconciler) reconcileOperandResources(ctx context.Context, in
 	BootstrapData.GlobalAccountAud = base64.StdEncoding.EncodeToString([]byte(string(decodedGlobalAud) + "," + wlpClientID))
 	BootstrapData.DefaultAUDValue = base64.StdEncoding.EncodeToString([]byte(string(decodedDefaultAud) + "," + wlpClientID))
 
-	klog.Infof("4444 integration data encryption keys: %s", IntegrationData.EncryptionKeys)
-	if !strings.HasPrefix(IntegrationData.EncryptionKeys, "eyJ") { // Check if already base64 encoded
+	// Only encode the encryption keys if they're not already encoded
+	// they should be raw JSON at this point from initMCSPData
+	if !strings.HasPrefix(IntegrationData.EncryptionKeys, "eyJ") {
 		IntegrationData.EncryptionKeys = base64.StdEncoding.EncodeToString([]byte(IntegrationData.EncryptionKeys))
 	}
 
-	if !strings.HasPrefix(IntegrationData.CurrentEncryptionKeyNum, "eyJ") { // Check if already base64 encoded
+	if !strings.HasPrefix(IntegrationData.CurrentEncryptionKeyNum, "eyJ") {
 		IntegrationData.CurrentEncryptionKeyNum = base64.StdEncoding.EncodeToString([]byte(IntegrationData.CurrentEncryptionKeyNum))
 	}
 
@@ -1194,7 +1210,7 @@ func (r *AccountIAMReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		//Owns(&corev1.ServiceAccount{}).
 		Owns(&routev1.Route{}).
 		Owns(&networkingv1.NetworkPolicy{}).
-		//Owns(&batchv1.Job{}).
+		Owns(&batchv1.Job{}).
 		Owns(&certmgrv1.Certificate{}).
 		Owns(&certmgrv1.Issuer{}).
 		Owns(&rbacv1.Role{}).
