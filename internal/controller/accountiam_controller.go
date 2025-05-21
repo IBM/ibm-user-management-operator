@@ -745,8 +745,9 @@ func (r *AccountIAMReconciler) injectData(ctx context.Context, instance *operato
 		object := &unstructured.Unstructured{}
 		buffer.Reset()
 
-		// Replace image references first - no need to use utils.ReplaceImages anymore
-		manifest = images.ReplaceInYAML(manifest)
+		if images.ContainsImageReferences(manifest) {
+			manifest = images.ReplaceInYAML(manifest)
+		}
 
 		t := template.Must(template.New("template resources").Parse(manifest))
 		if err := t.Execute(&buffer, combinedData); err != nil {
@@ -1029,7 +1030,6 @@ func (r *AccountIAMReconciler) reconcileUI(ctx context.Context, instance *operat
 	for _, v := range yamls.StaticYamlsUI {
 		object := &unstructured.Unstructured{}
 
-		// Only replace images if needed - more efficient
 		if images.ContainsImageReferences(v) {
 			v = images.ReplaceInYAML(v)
 		}

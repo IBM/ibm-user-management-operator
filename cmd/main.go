@@ -66,8 +66,6 @@ func init() {
 }
 
 func main() {
-	// Initialize images, loads all container images from environment variables
-	images.Initialize()
 
 	var metricsAddr string
 	var enableLeaderElection bool
@@ -110,6 +108,9 @@ func main() {
 	webhookServer := webhook.NewServer(webhook.Options{
 		TLSOpts: tlsOpts,
 	})
+
+	// Initialize images, loads all container images from environment variables
+	images.Initialize()
 
 	watchNsConfig := make(map[string]cache.Config)
 	watchNamespaces := utils.GetWatchNamespace()

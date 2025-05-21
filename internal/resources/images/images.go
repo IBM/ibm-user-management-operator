@@ -16,7 +16,6 @@ var (
 		"RELATED_IMAGE_API_SERVICE",
 	}
 
-	// imageMap caches the resolved image values
 	imageMap = make(map[string]string)
 
 	// initOnce ensures initialization happens only once
@@ -34,22 +33,27 @@ func Initialize() {
 	})
 }
 
-// Get returns the image reference for a given environment variable name
-func Get(envName string) string {
-	if image, exists := imageMap[envName]; exists {
-		return image
-	}
+// // Get returns the image reference for a given environment variable name
+// func Get(envName string) string {
+// 	if image, exists := imageMap[envName]; exists {
+// 		return image
+// 	}
 
-	// Fallback to direct lookup if not in cache
-	image, _ := os.LookupEnv(envName)
-	return image
-}
+// 	// Fallback to direct lookup if not in cache
+// 	image, _ := os.LookupEnv(envName)
+// 	return image
+// }
 
 // ReplaceInYAML replaces all image placeholders in the provided YAML content
 func ReplaceInYAML(yaml string) string {
+
 	for envName, imageValue := range imageMap {
-		if imageValue != "" {
+		// Only perform replacement if:
+		// 1. The image value is not empty
+		// 2. The environment variable name appears in the YAML
+		if imageValue != "" && strings.Contains(yaml, envName) {
 			yaml = strings.ReplaceAll(yaml, envName, imageValue)
+			return yaml
 		}
 	}
 	return yaml
