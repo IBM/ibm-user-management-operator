@@ -24,6 +24,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"reflect"
 	"strings"
@@ -46,10 +47,6 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-)
-
-var (
-	ImageList = []string{"RELATED_IMAGE_MCSP_UTILS", "RELATED_IMAGE_ACCOUNT_IAM", "RELATED_IMAGE_MCSP_IM_CONFIG_JOB", "RELATED_IMAGE_INSTANCE_MANAGEMENT_SERVICE", "RELATED_IMAGE_API_SERVICE"}
 )
 
 // GetOperatorNamespace returns the Namespace of the operator
@@ -143,19 +140,6 @@ func Concat(s ...string) string {
 	return strings.Join(s, "")
 }
 
-func ReplaceImages(resource string) (result string) {
-	result = resource
-	for _, imageName := range ImageList {
-		result = strings.ReplaceAll(result, imageName, GetImage(imageName))
-	}
-	return result
-}
-
-func GetImage(imageName string) string {
-	image, _ := os.LookupEnv(imageName)
-	return image
-}
-
 // GetSecretData gets the data from a secret
 func GetSecretData(ctx context.Context, k8sClient client.Client, secretName, ns, dataKey string) (string, error) {
 	secret := &corev1.Secret{}
@@ -208,14 +192,22 @@ func IndentCert(cert string, indentSpaces int) string {
 	return strings.Join(lines, "\n")
 }
 
-// InsertColonInRedisURL inserts colon in the redis URL SSL
-func InsertColonInURL(redisURL string) string {
-	parts := strings.SplitN(redisURL, "@", 2)
-	if len(parts) == 2 {
-		parts[0] = strings.Replace(parts[0], "rediss://", "rediss://:", 1)
-		return parts[0] + "@" + parts[1]
+// GetRedisInfo extracts hostname and port from a Redis URL.
+// If the URL does not specify a port, the default port 6379 is used.
+func GetRedisInfo(redisURL string) (string, string, error) {
+	u, err := url.Parse(redisURL)
+	if err != nil {
+		return "", "", fmt.Errorf("error parsing redis URL: %w", err)
 	}
-	return redisURL
+
+	hostname := u.Hostname()
+	port := u.Port()
+
+	if port == "" {
+		port = "6379" // default port for Redis
+	}
+
+	return hostname, port, nil
 }
 
 // CalculateHashes calculates the hash for the existing cluster resource and the new template resource

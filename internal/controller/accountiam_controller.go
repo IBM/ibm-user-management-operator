@@ -35,7 +35,6 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
@@ -48,7 +47,8 @@ import (
 	operatorv1alpha1 "github.com/IBM/ibm-user-management-operator/api/v1alpha1"
 	"github.com/IBM/ibm-user-management-operator/internal/controller/utils"
 	"github.com/IBM/ibm-user-management-operator/internal/resources"
-	res "github.com/IBM/ibm-user-management-operator/internal/resources/yamls"
+	"github.com/IBM/ibm-user-management-operator/internal/resources/images"
+	"github.com/IBM/ibm-user-management-operator/internal/resources/yamls"
 	odlm "github.com/IBM/operand-deployment-lifecycle-manager/v4/api/v1alpha1"
 	"github.com/ghodss/yaml"
 )
@@ -63,16 +63,16 @@ type AccountIAMReconciler struct {
 
 // BootstrapSecret stores all the bootstrap secret data
 type BootstrapSecret struct {
-	Realm               string
-	ClientID            string
-	ClientSecret        string
-	PGPassword          string
-	DefaultAUDValue     string
-	DefaultRealmValue   string
-	SREMCSPGroupsToken  string
-	GlobalRealmValue    string
-	GlobalAccountAud    string
-	UserValidationAPIV2 string
+	Realm               string `json:"realm,omitempty"`
+	ClientID            string `json:"clientID,omitempty"`
+	ClientSecret        string `json:"clientSecret,omitempty"`
+	PGPassword          string `json:"pgPassword,omitempty"`
+	DefaultAUDValue     string `json:"defaultAUDValue,omitempty"`
+	DefaultRealmValue   string `json:"defaultRealmValue,omitempty"`
+	SREMCSPGroupsToken  string `json:"sremcspGroupsToken,omitempty"`
+	GlobalRealmValue    string `json:"globalRealmValue,omitempty"`
+	GlobalAccountAud    string `json:"globalAccountAud,omitempty"`
+	UserValidationAPIV2 string `json:"userValidationAPIV2,omitempty"`
 }
 
 var BootstrapData BootstrapSecret
@@ -118,6 +118,9 @@ type UIBootstrapTemplate struct {
 	CertDir                     string
 	ConfigEnv                   string
 	RedisHost                   string
+	RedisPort                   string
+	RedisUsername               string
+	RedisPassword               string
 	AccountAPI                  string
 	ProductAPI                  string
 	MeteringAPI                 string
@@ -167,6 +170,7 @@ var UIBootstrapData UIBootstrapTemplate
 //+kubebuilder:rbac:groups=cert-manager.io,namespace="placeholder",resources=issuers;certificates,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",namespace="placeholder",resources=services,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=coordination.k8s.io,namespace="placeholder",resources=leases,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=operator.ibm.com,namespace="placeholder",resources=commonservices,verbs=get;list;watch;create;update;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -362,7 +366,7 @@ func (r *AccountIAMReconciler) createRedisCR(ctx context.Context, instance *oper
 	}
 
 	klog.Infof("Creating Redis certificate")
-	for _, v := range res.REDIS_CERTS {
+	for _, v := range yamls.REDIS_CERTS {
 		object := &unstructured.Unstructured{}
 		manifest := []byte(v)
 		if err := yaml.Unmarshal(manifest, object); err != nil {
@@ -384,7 +388,7 @@ func (r *AccountIAMReconciler) createRedisCR(ctx context.Context, instance *oper
 		RedisCRVersion: "1.2.0",
 	}
 
-	if err := r.injectData(ctx, instance, []string{res.RedisCRTemplate}, redisCRData); err != nil {
+	if err := r.injectData(ctx, instance, []string{yamls.RedisCRTemplate}, redisCRData); err != nil {
 		klog.Errorf("Failed to create Redis CR: %v", err)
 		return err
 	}
@@ -419,16 +423,16 @@ func (r *AccountIAMReconciler) initBootstrapData(ctx context.Context, ns string,
 				Namespace: ns,
 			},
 			Data: map[string][]byte{
-				"Realm":               []byte("PrimaryRealm"),
-				"ClientID":            clinetID,
-				"ClientSecret":        clientSecret,
-				"UserValidationAPIV2": []byte("https://openshift.default.svc/apis/user.openshift.io/v1/users/~"),
-				"DefaultAUDValue":     clinetID,
-				"DefaultRealmValue":   []byte("PrimaryRealm"),
-				"SREMCSPGroupsToken":  []byte("mcsp-im-integration-admin"),
-				"GlobalRealmValue":    []byte("PrimaryRealm"),
-				"GlobalAccountAud":    clinetID,
-				"PGPassword":          pg,
+				"realm":               []byte("PrimaryRealm"),
+				"clientID":            clinetID,
+				"clientSecret":        clientSecret,
+				"userValidationAPIV2": []byte("https://openshift.default.svc/apis/user.openshift.io/v1/users/~"),
+				"defaultAUDValue":     clinetID,
+				"defaultRealmValue":   []byte("PrimaryRealm"),
+				"sremcspGroupsToken":  []byte("mcsp-im-integration-admin"),
+				"globalRealmValue":    []byte("PrimaryRealm"),
+				"globalAccountAud":    clinetID,
+				"pgPassword":          pg,
 			},
 			Type: corev1.SecretTypeOpaque,
 		}
@@ -449,10 +453,31 @@ func (r *AccountIAMReconciler) initMCSPData(ns string, host string) error {
 	accountIAMHost := strings.Replace(host, "cp-console", "account-iam", 1)
 	accountIAMUIHost := strings.Replace(host, "cp-console", "account-iam-console", 1)
 
-	// Generate a 256-bit (32 bytes) encryption key
-	keys, err := utils.RandStrings(32)
-	if err != nil {
-		klog.Errorf("Failed to generate encryption key: %v", err)
+	existingSecret := &corev1.Secret{}
+	err := r.Client.Get(context.TODO(), types.NamespacedName{Name: resources.AccountIAMDBSecret, Namespace: ns}, existingSecret)
+
+	var encryptionKeys string
+	var currentKeyNum string
+
+	if err == nil && existingSecret.Data != nil {
+		if encKeys, ok := existingSecret.Data["ENCRYPTION_KEYS"]; ok && len(encKeys) > 0 {
+			encryptionKeys = string(encKeys)
+		}
+
+		if keyNum, ok := existingSecret.Data["CURRENT_ENCRYPTION_KEY_NUM"]; ok && len(keyNum) > 0 {
+			currentKeyNum = string(keyNum)
+		}
+	}
+
+	if encryptionKeys == "" || currentKeyNum == "" {
+		keys, genErr := utils.RandStrings(32)
+		if genErr != nil {
+			klog.Errorf("Failed to generate encryption key: %v", genErr)
+			return genErr
+		}
+
+		encryptionKeys = fmt.Sprintf(`[{keyNum: 1, key: %s}]`, string(keys[0]))
+		currentKeyNum = "1"
 	}
 
 	IntegrationData = IntegrationConfig{
@@ -467,8 +492,8 @@ func (r *AccountIAMReconciler) initMCSPData(ns string, host string) error {
 		IMURL:                   utils.Concat("https://", host),
 		AccountIAMURL:           utils.Concat("https://", accountIAMHost),
 		AccountIAMConsoleURL:    utils.Concat("https://", accountIAMUIHost),
-		EncryptionKeys:          fmt.Sprintf(`[{keyNum: 1, key: %s}]`, string(keys[0])),
-		CurrentEncryptionKeyNum: "1",
+		EncryptionKeys:          encryptionKeys,
+		CurrentEncryptionKeyNum: currentKeyNum,
 	}
 	return nil
 }
@@ -487,27 +512,45 @@ func (r *AccountIAMReconciler) cleanJob(ctx context.Context, jobs []string, ns s
 			return err
 		}
 
-		// Check if the job is completed successfully
-		jobCompleted := false
+		// If the job failed, always delete it to allow retry
 		for _, condition := range job.Status.Conditions {
-			if condition.Type == batchv1.JobComplete && condition.Status == corev1.ConditionTrue {
-				klog.V(2).Infof("Job %s completed successfully, skipping deletion.", jobName)
-				jobCompleted = true
-				break
+			if condition.Type == batchv1.JobFailed && condition.Status == corev1.ConditionTrue {
+				klog.Infof("Job %s failed, will be cleaned up to allow retry", jobName)
+				background := metav1.DeletePropagationBackground
+				if err := r.Delete(ctx, job, &client.DeleteOptions{
+					PropagationPolicy: &background,
+				}); err != nil {
+					if !k8serrors.IsNotFound(err) {
+						return err
+					}
+				}
+				return nil
 			}
 		}
 
-		if jobCompleted {
-			continue
+		// Check if job is completed - don't delete completed jobs
+		for _, condition := range job.Status.Conditions {
+			if condition.Type == batchv1.JobComplete && condition.Status == corev1.ConditionTrue {
+				klog.Infof("Job %s completed successfully", jobName)
+				return nil
+			}
 		}
 
-		klog.Infof("Deleting incomplete job %s", jobName)
-		background := metav1.DeletePropagationBackground
-		if err := r.Delete(ctx, job, &client.DeleteOptions{
-			PropagationPolicy: &background,
-		}); err != nil {
-			if !k8serrors.IsNotFound(err) {
-				return err
+		// For jobs that are neither completed nor failed, let them continue running until timeout
+		if job.Status.StartTime != nil {
+			runningTime := time.Since(job.Status.StartTime.Time)
+			if runningTime > 10*time.Minute {
+				klog.Infof("Job %s has been running for %v, cleaning up", jobName, runningTime)
+				background := metav1.DeletePropagationBackground
+				if err := r.Delete(ctx, job, &client.DeleteOptions{
+					PropagationPolicy: &background,
+				}); err != nil {
+					if !k8serrors.IsNotFound(err) {
+						return err
+					}
+				}
+			} else {
+				klog.Infof("Job %s is still running for %v, allowing to continue", jobName, runningTime)
 			}
 		}
 	}
@@ -520,7 +563,7 @@ func (r *AccountIAMReconciler) cleanJob(ctx context.Context, jobs []string, ns s
 func (r *AccountIAMReconciler) createOperandRBAC(ctx context.Context, instance *operatorv1alpha1.AccountIAM) error {
 	klog.Infof("Creating or updating RBAC for user-mgmt operand")
 
-	for _, v := range res.OperandRBACs {
+	for _, v := range yamls.OperandRBACs {
 		object := &unstructured.Unstructured{}
 		manifest := []byte(v)
 		if err := yaml.Unmarshal(manifest, object); err != nil {
@@ -547,7 +590,7 @@ func (r *AccountIAMReconciler) reconcileOperandResources(ctx context.Context, in
 	// TODO: will need to find a better place to initialize the database
 	klog.Infof("Applying DB Bootstrap Job")
 	object := &unstructured.Unstructured{}
-	resource := utils.ReplaceImages(res.DB_BOOTSTRAP_JOB)
+	resource := images.ReplaceInYAML(yamls.DB_BOOTSTRAP_JOB)
 	manifest := []byte(resource)
 	if err := yaml.Unmarshal(manifest, object); err != nil {
 		return err
@@ -568,6 +611,7 @@ func (r *AccountIAMReconciler) reconcileOperandResources(ctx context.Context, in
 		klog.Errorf("Failed to get WLP client ID from secret %s in namespace %s", resources.IMOIDCCrendential, instance.Namespace)
 		return err
 	}
+
 	decodedGlobalAud, err := base64.StdEncoding.DecodeString(BootstrapData.GlobalAccountAud)
 	if err != nil {
 		return err
@@ -579,18 +623,30 @@ func (r *AccountIAMReconciler) reconcileOperandResources(ctx context.Context, in
 
 	BootstrapData.GlobalAccountAud = base64.StdEncoding.EncodeToString([]byte(string(decodedGlobalAud) + "," + wlpClientID))
 	BootstrapData.DefaultAUDValue = base64.StdEncoding.EncodeToString([]byte(string(decodedDefaultAud) + "," + wlpClientID))
-	IntegrationData.EncryptionKeys = base64.StdEncoding.EncodeToString([]byte(IntegrationData.EncryptionKeys))
-	IntegrationData.CurrentEncryptionKeyNum = base64.StdEncoding.EncodeToString([]byte(IntegrationData.CurrentEncryptionKeyNum))
 
-	if err := r.injectData(ctx, instance, append(res.APP_SECRETS, res.IM_INTEGRATION_YAMLS...), BootstrapData, IntegrationData); err != nil {
+	// Only encode the encryption keys if they're not already encoded
+	// they should be raw JSON at this point from initMCSPData
+	if !strings.HasPrefix(IntegrationData.EncryptionKeys, "eyJ") {
+		IntegrationData.EncryptionKeys = base64.StdEncoding.EncodeToString([]byte(IntegrationData.EncryptionKeys))
+	}
+
+	if !strings.HasPrefix(IntegrationData.CurrentEncryptionKeyNum, "eyJ") {
+		IntegrationData.CurrentEncryptionKeyNum = base64.StdEncoding.EncodeToString([]byte(IntegrationData.CurrentEncryptionKeyNum))
+	}
+
+	if err := r.injectData(ctx, instance, append(yamls.APP_SECRETS, yamls.IM_INTEGRATION_YAMLS...), BootstrapData, IntegrationData); err != nil {
 		return err
 	}
 
 	// static manifests which do not change
 	klog.Infof("Creating MCSP static yamls")
-	for _, v := range res.APP_STATIC_YAMLS {
+	for _, v := range yamls.APP_STATIC_YAMLS {
 		object := &unstructured.Unstructured{}
-		v = utils.ReplaceImages(v)
+
+		if images.ContainsImageReferences(v) {
+			v = images.ReplaceInYAML(v)
+		}
+
 		manifest := []byte(v)
 		if err := yaml.Unmarshal(manifest, object); err != nil {
 			return err
@@ -605,10 +661,13 @@ func (r *AccountIAMReconciler) reconcileOperandResources(ctx context.Context, in
 	}
 
 	klog.Infof("Creating Account IAM yamls")
-	for _, v := range res.ACCOUNT_IAM_RES {
+	for _, v := range yamls.ACCOUNT_IAM_RES {
 		object := &unstructured.Unstructured{}
 		v = strings.ReplaceAll(v, "${NAMESPACE}", instance.Namespace)
-		v = utils.ReplaceImages(v)
+		if images.ContainsImageReferences(v) {
+			v = images.ReplaceInYAML(v)
+		}
+
 		manifest := []byte(v)
 		if err := yaml.Unmarshal(manifest, object); err != nil {
 			return err
@@ -633,39 +692,27 @@ func (r *AccountIAMReconciler) reconcileOperandResources(ctx context.Context, in
 		CAcert: utils.IndentCert(caCRT, 6),
 	}
 
-	if err := r.injectData(ctx, instance, res.ACCOUNT_IAM_ROUTE_RES, RouteData); err != nil {
+	if err := r.injectData(ctx, instance, yamls.ACCOUNT_IAM_ROUTE_RES, RouteData); err != nil {
 		return err
 	}
 
-	// Update issuer in platform-auth-idp configmap
-	klog.Infof("Updating platform-auth-idp configmap")
-	idpconfig := &corev1.ConfigMap{}
-	if err := r.Get(ctx, client.ObjectKey{Name: resources.IMPlatformCM, Namespace: instance.Namespace}, idpconfig); err != nil {
-		klog.Errorf("Failed to get configmap %s in namespace %s: %v", resources.IMPlatformCM, instance.Namespace, err)
-		return err
+	// Ensure the CommonService CR is configured to set the desired OIDC issuer URL.
+	// This is the trigger for the platform-auth-idp ConfigMap to be updated by IM operator.
+	klog.Infof("Ensuring OIDC issuer URL is configured in CommonService CR")
+	if err := r.configureIssuerViaCS(ctx); err != nil {
+		klog.Errorf("Failed to configure OIDC issuer URL in CommonService CR: %v", err)
+		return fmt.Errorf("failed to configure issuer via CommonService CR: %w", err)
 	}
 
-	if idpconfig.Data["OIDC_ISSUER_URL"] == IntegrationData.DefaultIDPValue {
-		klog.Infof("ConfigMap platform-auth-idp already has the desired value for OIDC_ISSUER_URL: %s", idpconfig.Data["OIDC_ISSUER_URL"])
-		return nil // Skip the update as the value is already set
+	// Wait for the OIDC_ISSUER_URL to be updated in the platform-auth-idp ConfigMap.
+	// The waitForIssuerinCM function will fetch the configmap and check the OIDC_ISSUER_URL.
+	klog.Infof("Waiting for OIDC_ISSUER_URL to be updated in platform-auth-idp ConfigMap")
+	if err := r.waitForIssuerinCM(ctx, instance.Namespace); err != nil {
+		klog.Errorf("Failed to wait for OIDC_ISSUER_URL in platform-auth-idp ConfigMap: %v", err)
+		return fmt.Errorf("failed waiting for issuer in ConfigMap: %w", err)
 	}
 
-	idpconfig.Data["OIDC_ISSUER_URL"] = IntegrationData.DefaultIDPValue
-	if err := r.Update(ctx, idpconfig); err != nil {
-		klog.Errorf("Failed to update ConfigMap platform-auth-idp in namespace %s: %v", instance.Namespace, err)
-		return err
-	}
-
-	// Delete the platform-auth-service and platform-identity-provider pod to restart it
-	if err := r.restartAndCheckPod(ctx, instance.Namespace, "platform-auth-service"); err != nil {
-		return err
-	}
-
-	if err := r.restartAndCheckPod(ctx, instance.Namespace, "platform-identity-provider"); err != nil {
-		return err
-	}
-
-	klog.Infof("MCSP operand resources created successfully")
+	klog.Infof("User Management operand resources created successfully")
 	return nil
 }
 
@@ -680,8 +727,10 @@ func (r *AccountIAMReconciler) injectData(ctx context.Context, instance *operato
 		object := &unstructured.Unstructured{}
 		buffer.Reset()
 
-		// Parse the manifest template and execute it with the provided data
-		manifest = utils.ReplaceImages(manifest)
+		if images.ContainsImageReferences(manifest) {
+			manifest = images.ReplaceInYAML(manifest)
+		}
+
 		t := template.Must(template.New("template resources").Parse(manifest))
 		if err := t.Execute(&buffer, combinedData); err != nil {
 			return err
@@ -704,50 +753,156 @@ func (r *AccountIAMReconciler) injectData(ctx context.Context, instance *operato
 	return nil
 }
 
-func (r *AccountIAMReconciler) restartAndCheckPod(ctx context.Context, ns, label string) error {
+func (r *AccountIAMReconciler) configureIssuerViaCS(ctx context.Context) error {
+	// Update issuer in CommonService CR
+	klog.Infof("Updating issuer in CommonService CR")
+	commonService := &unstructured.Unstructured{}
+	commonService.SetAPIVersion("operator.ibm.com/v3")
+	commonService.SetKind("CommonService")
 
-	// restart platform-auth-service pod and wait for it to be ready
-	pod, err := r.getPodName(ctx, ns, label)
+	if err := r.Get(ctx, client.ObjectKey{Name: "common-service", Namespace: utils.GetOperatorNamespace()}, commonService); err != nil {
+		klog.Errorf("Failed to get CommonService CR %s/%s: %v", utils.GetOperatorNamespace(), "common-service", err)
+		return err
+	}
+
+	// Extract the services array
+	services, found, err := unstructured.NestedSlice(commonService.Object, "spec", "services")
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get services from CommonService CR %s/%s: %v", utils.GetOperatorNamespace(), "common-service", err)
+	} else if !found {
+		services = []interface{}{}
 	}
 
-	podName := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      pod,
-			Namespace: ns,
-		},
-	}
-	if err := r.Delete(ctx, podName); err != nil {
-		klog.Errorf("Failed to delete pod %s in namespace %s", label, ns)
-		return err
-	}
+	// Find the ibm-im-operator service
+	imServiceIndex := -1
+	for i, service := range services {
+		serviceMap, ok := service.(map[string]interface{})
+		if !ok {
+			continue
+		}
 
-	time.Sleep(10 * time.Second)
-
-	if err := utils.WaitForDeploymentReady(ctx, r.Client, ns, label); err != nil {
-		klog.Errorf("Failed to wait for Deployment %s to be ready in namespace %s", label, ns)
-		return err
+		name, ok := serviceMap["name"].(string)
+		if ok && name == "ibm-im-operator" {
+			imServiceIndex = i
+			break
+		}
 	}
 
+	// Track if we need to update the CR
+	needsUpdate := false
+
+	// If ibm-im-operator service not found, append it
+	if imServiceIndex == -1 {
+		klog.Infof("Adding ibm-im-operator service to CommonService CR %s/%s", utils.GetOperatorNamespace(), "common-service")
+		imService := map[string]interface{}{
+			"name": "ibm-im-operator",
+			"spec": map[string]interface{}{
+				"authentication": map[string]interface{}{
+					"config": map[string]interface{}{
+						"oidcIssuerURL": IntegrationData.DefaultIDPValue,
+					},
+				},
+			},
+		}
+		services = append(services, imService)
+		needsUpdate = true
+	} else {
+		// Update existing service
+		serviceMap := services[imServiceIndex].(map[string]interface{})
+
+		// Get or create the necessary nested maps
+		spec, ok := serviceMap["spec"].(map[string]interface{})
+		if !ok {
+			spec = map[string]interface{}{}
+			serviceMap["spec"] = spec
+			needsUpdate = true
+		}
+
+		auth, ok := spec["authentication"].(map[string]interface{})
+		if !ok {
+			auth = map[string]interface{}{}
+			spec["authentication"] = auth
+			needsUpdate = true
+		}
+
+		config, ok := auth["config"].(map[string]interface{})
+		if !ok {
+			config = map[string]interface{}{}
+			auth["config"] = config
+			needsUpdate = true
+		}
+
+		// Check if the value needs to be updated
+		currentURL, ok := config["oidcIssuerURL"].(string)
+		if !ok || currentURL != IntegrationData.DefaultIDPValue {
+			klog.Infof("Updating oidcIssuerURL from %s to %s", currentURL, IntegrationData.DefaultIDPValue)
+			config["oidcIssuerURL"] = IntegrationData.DefaultIDPValue
+			needsUpdate = true
+		} else {
+			klog.Infof("CommonService CR %s/%s already has the desired oidcIssuerURL: %s", utils.GetOperatorNamespace(), "common-service", currentURL)
+		}
+
+		// Update the nested maps back up the chain
+		auth["config"] = config
+		spec["authentication"] = auth
+		serviceMap["spec"] = spec
+		services[imServiceIndex] = serviceMap
+	}
+
+	// Only update if changes were made
+	if needsUpdate {
+		if err := unstructured.SetNestedSlice(commonService.Object, services, "spec", "services"); err != nil {
+			klog.Errorf("Failed to update services in CommonService CR %s/%s: %v", utils.GetOperatorNamespace(), "common-service", err)
+			return err
+		}
+		if err := r.Update(ctx, commonService); err != nil {
+			klog.Errorf("Failed to update CommonService CR %s/%s: %v", utils.GetOperatorNamespace(), "common-service", err)
+			return err
+		}
+		klog.Infof("Successfully updated oidcIssuerURL in CommonService CR %s/%s", utils.GetOperatorNamespace(), "common-service")
+	}
 	return nil
 }
 
-func (r *AccountIAMReconciler) getPodName(ctx context.Context, namespace, label string) (string, error) {
-	podList := &corev1.PodList{}
-	labelSelector := labels.SelectorFromSet(labels.Set{"app": label})
+func (r *AccountIAMReconciler) waitForIssuerinCM(ctx context.Context, ns string) error {
+	timeout := time.After(5 * time.Minute)
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
 
-	if err := r.Client.List(ctx, podList, &client.ListOptions{
-		Namespace:     namespace,
-		LabelSelector: labelSelector,
-	}); err != nil {
-		return "", err
-	}
+	for {
+		select {
+		case <-timeout:
+			return errors.New("timeout waiting for OIDC_ISSUER_URL to be updated in platform-auth-idp ConfigMap")
+		case <-ticker.C:
+			// Check if the ConfigMap has been updated
+			configMap := &corev1.ConfigMap{}
+			if err := r.Get(ctx, types.NamespacedName{
+				Namespace: ns,
+				Name:      "platform-auth-idp",
+			}, configMap); err != nil {
+				if k8serrors.IsNotFound(err) {
+					klog.V(2).Infof("platform-auth-idp ConfigMap not found yet, waiting...")
+					continue
+				}
+				klog.Errorf("Error getting platform-auth-idp ConfigMap: %v", err)
+				continue
+			}
 
-	if len(podList.Items) == 0 {
-		return "", fmt.Errorf("no pod found with label %s in namespace %s", labelSelector, namespace)
+			// Check if the OIDC_ISSUER_URL field has been updated
+			if issuerURL, ok := configMap.Data["OIDC_ISSUER_URL"]; ok {
+				if issuerURL == IntegrationData.DefaultIDPValue {
+					klog.Infof("OIDC_ISSUER_URL successfully updated to %s in platform-auth-idp ConfigMap", issuerURL)
+					goto endWait
+				}
+				klog.V(2).Infof("OIDC_ISSUER_URL in ConfigMap is %s, waiting for %s...",
+					issuerURL, IntegrationData.DefaultIDPValue)
+			} else {
+				klog.V(2).Infof("OIDC_ISSUER_URL field not found in ConfigMap %s/%s, waiting...", ns, "platform-auth-idp")
+			}
+		}
 	}
-	return podList.Items[0].Name, nil
+endWait:
+	return nil
 }
 
 // -------------- Reconcile resources helper functions done --------------
@@ -758,7 +913,7 @@ func (r *AccountIAMReconciler) configIM(ctx context.Context, instance *operatorv
 
 	klog.Infof("Applying IM Config Job")
 
-	if err := r.injectData(ctx, instance, res.IMConfigYamls, IntegrationData); err != nil {
+	if err := r.injectData(ctx, instance, yamls.IMConfigYamls, IntegrationData); err != nil {
 		return err
 	}
 
@@ -783,7 +938,7 @@ func (r *AccountIAMReconciler) reconcileUI(ctx context.Context, instance *operat
 	object := &unstructured.Unstructured{}
 	tmpl := template.New("template for injecting data into YAMLs")
 	var tmplWriter bytes.Buffer
-	for _, v := range res.TemplateYamlsUI {
+	for _, v := range yamls.TemplateYamlsUI {
 		manifest := v
 		tmplWriter.Reset()
 
@@ -808,9 +963,13 @@ func (r *AccountIAMReconciler) reconcileUI(ctx context.Context, instance *operat
 	}
 
 	klog.Infof("Creating static yamls for UI")
-	for _, v := range res.StaticYamlsUI {
+	for _, v := range yamls.StaticYamlsUI {
 		object := &unstructured.Unstructured{}
-		v = utils.ReplaceImages(v)
+
+		if images.ContainsImageReferences(v) {
+			v = images.ReplaceInYAML(v)
+		}
+
 		manifest := []byte(v)
 		if err := yaml.Unmarshal(manifest, object); err != nil {
 			return err
@@ -833,19 +992,19 @@ func (r *AccountIAMReconciler) initUIBootstrapData(ctx context.Context, instance
 	if err := r.Get(ctx, types.NamespacedName{Namespace: instance.Namespace, Name: "ibmcloud-cluster-info"}, clusterInfo); err != nil {
 		return err
 	}
-	if _, ok := clusterInfo.Data["cluster_kube_apiserver_host"]; !ok {
-		return errors.New("configmap ibmcloud-cluster-info missing field 'cluster_kube_apiserver_host'")
+	if _, ok := clusterInfo.Data["cluster_address"]; !ok {
+		return errors.New("configmap ibmcloud-cluster-info missing field 'cluster_address'")
 	}
 	cpconsole, ok := clusterInfo.Data["cluster_endpoint"]
 	if !ok {
 		return errors.New("configmap ibmcloud-cluster-info missing field 'cluster_endpoint'")
 	}
-	parsing := strings.Split(clusterInfo.Data["cluster_kube_apiserver_host"], ".")
+	parsing := strings.Split(clusterInfo.Data["cluster_address"], ".")
 	domain := strings.Join(parsing[1:], ".")
 	klog.Infof("domain: %s", domain)
 
 	// Get the API key
-	apiKey, err := utils.GetSecretData(ctx, r.Client, resources.IMAPISecret, instance.Namespace, resources.IMAPIKey)
+	apiKey, err := utils.GetSecretData(ctx, r.Client, resources.IMAPISecret, instance.Namespace, resources.MCSPAPIKey)
 	if err != nil {
 		klog.Errorf("Failed to get secret %s in namespace %s: %v", resources.IMAPISecret, instance.Namespace, err)
 		return err
@@ -857,7 +1016,17 @@ func (r *AccountIAMReconciler) initUIBootstrapData(ctx context.Context, instance
 		klog.Errorf("Failed to get secret %s in namespace %s: %v", resources.Rediscp, instance.Namespace, err)
 		return err
 	}
-	redisURlssl = utils.InsertColonInURL(redisURlssl)
+	redisHostname, redisPort, err := utils.GetRedisInfo(redisURlssl)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return err
+	}
+
+	redisPassword, err := utils.GetSecretData(ctx, r.Client, resources.Rediscp, instance.Namespace, resources.RedisPassword)
+	if err != nil {
+		klog.Errorf("Failed to get redis password from secret %s in namespace %s: %v", resources.Rediscp, instance.Namespace, err)
+		return err
+	}
 
 	// get Redis Certificate Authority
 	caCRT, err := utils.GetSecretData(ctx, r.Client, resources.RedisCACert, instance.Namespace, resources.CAKey)
@@ -882,16 +1051,18 @@ func (r *AccountIAMReconciler) initUIBootstrapData(ctx context.Context, instance
 	}
 
 	UIBootstrapData = UIBootstrapTemplate{
-		Hostname:                   utils.Concat("account-iam-console-", instance.Namespace, ".apps.", domain),
-		InstanceManagementHostname: utils.Concat("account-iam-console-", instance.Namespace, ".apps.", domain),
+		Hostname:                   utils.Concat("account-iam-console-", instance.Namespace, ".", domain),
+		InstanceManagementHostname: utils.Concat("account-iam-console-", instance.Namespace, ".", domain),
 		ClientID:                   string(decodedClientID),
 		ClientSecret:               string(decodedClientSecret),
 		IAMGlobalAPIKey:            string(apiKey),
-		RedisHost:                  redisURlssl,
+		RedisHost:                  redisHostname,
+		RedisPort:                  redisPort,
+		RedisPassword:              redisPassword,
 		RedisCA:                    caCRT,
 		SessionSecret:              string(SessionSecret[0]),
 		DeploymentCloud:            "IBM_CLOUD",
-		IAMAPI:                     utils.Concat("https://account-iam-", instance.Namespace, ".apps.", domain),
+		IAMAPI:                     utils.Concat("https://account-iam-", instance.Namespace, ".", domain),
 		NodeEnv:                    "production",
 		CertDir:                    "../../security",
 		ConfigEnv:                  "dev",

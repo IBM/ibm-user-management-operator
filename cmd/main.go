@@ -38,6 +38,9 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
+	operatorv1alpha1 "github.com/IBM/ibm-user-management-operator/api/v1alpha1"
+	"github.com/IBM/ibm-user-management-operator/internal/controller"
+	"github.com/IBM/ibm-user-management-operator/internal/resources/images"
 	odlm "github.com/IBM/operand-deployment-lifecycle-manager/v4/api/v1alpha1"
 	olmapi "github.com/operator-framework/api/pkg/operators/v1"
 
@@ -66,6 +69,7 @@ func init() {
 }
 
 func main() {
+
 	var metricsAddr string
 	var enableLeaderElection bool
 	var probeAddr string
@@ -107,6 +111,9 @@ func main() {
 	webhookServer := webhook.NewServer(webhook.Options{
 		TLSOpts: tlsOpts,
 	})
+
+	// Initialize images, loads all container images from environment variables
+	images.Initialize()
 
 	watchNsConfig := make(map[string]cache.Config)
 	watchNamespaces := utils.GetWatchNamespace()

@@ -24,7 +24,7 @@ metadata:
     categories: Security
     certified: "false"
     containerImage: icr.io/cpopen/ibm-user-management-operator:latest
-    createdAt: "2024-11-12T18:52:51Z"
+    createdAt: "2025-04-22T04:28:14Z"
     description: Operator for managing deployment of account-iam service.
     features.operators.openshift.io/disconnected: "true"
     nss.operator.ibm.com/managed-operators: ibm-user-management-operator
@@ -123,10 +123,10 @@ spec:
                   value: icr.io/cpopen/cpfs/mcsp-im-config-job:1.0.0
                 - name: RELATED_IMAGE_API_SERVICE
                   value: icr.io/cpopen/cpfs/api_service:1.0.0
-                - name: RELATED_IMAGE_INSTANCE_MANAGEMENT_SERVICE
-                  value: icr.io/cpopen/cpfs/instance_management_service:1.0.0
-                image: quay.io/bedrockinstallerfid/ibm-user-management-operator:dev
-                imagePullPolicy: Always
+                - name: RELATED_IMAGE_ACCOUNT_SERVICE
+                  value: icr.io/cpopen/cpfs/account_service:1.0.0
+                image: icr.io/cpopen/ibm-user-management-operator:latest
+                imagePullPolicy: IfNotPresent
                 livenessProbe:
                   httpGet:
                     path: /healthz
@@ -357,6 +357,17 @@ spec:
         - apiGroups:
           - operator.ibm.com
           resources:
+          - commonservices
+          verbs:
+          - create
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - operator.ibm.com
+          resources:
           - operandrequests
           verbs:
           - create
@@ -447,8 +458,8 @@ spec:
     name: mcsp-im-config-job
   - image: icr.io/cpopen/cpfs/api_service:1.0.0
     name: api-service
-  - image: icr.io/cpopen/cpfs/instance_management_service:1.0.0
-    name: instance-management-service
+  - image: icr.io/cpopen/cpfs/account_service:1.0.0
+    name: account-management-service
   version: 1.0.0
   webhookdefinitions:
   - admissionReviewVersions:
