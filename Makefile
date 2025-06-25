@@ -33,7 +33,7 @@ else
 ARTIFACTORYA_REGISTRY ?= "docker-na-public.artifactory.swg-devops.com/hyc-cloud-private-scratch-docker-local/ibmcom"
 endif
 # Current Operator image name
-OPERATOR_IMAGE_NAME ?= common-service-operator
+OPERATOR_IMAGE_NAME ?= ibm-user-management-operator
 
 # CHANNELS define the bundle channels used in the bundle.
 # Add a new line here if you would like to change its default config. (E.g CHANNELS = "candidate,fast,stable")
