@@ -39,10 +39,35 @@ spec:
           spec:
             description: RoleActionConfigSpec defines the desired state of RoleActionConfig
             properties:
-              foo:
-                description: Foo is an example field of RoleActionConfig. Edit roleactionconfig_types.go
-                  to remove/update
-                type: string
+              IAM:
+                properties:
+                  actions:
+                    items:
+                      type: string
+                    maxItems: 100
+                    type: array
+                  clientID:
+                    type: string
+                  v2:
+                    type: boolean
+                  v2CustomRoles:
+                    items:
+                      properties:
+                        actions:
+                          items:
+                            type: string
+                          maxItems: 100
+                          type: array
+                        description:
+                          type: string
+                        name:
+                          type: string
+                      required:
+                      - description
+                      - name
+                      type: object
+                    type: array
+                type: object
             type: object
           status:
             description: RoleActionConfigStatus defines the observed state of RoleActionConfig

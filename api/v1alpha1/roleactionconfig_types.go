@@ -28,8 +28,27 @@ type RoleActionConfigSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Foo is an example field of RoleActionConfig. Edit roleactionconfig_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	IAM IAM `json:"IAM,omitempty"`
+}
+
+type IAM struct {
+	// +optional
+	V2 bool `json:"v2"`
+	// +optional
+	ClientID string `json:"clientID,omitempty"`
+	// +optional
+	V2CustomRoles []V2CustomRoles `json:"v2CustomRoles,omitempty"`
+	// +optional
+	// +kubebuilder:validation:MaxItems=100
+	Actions []string `json:"actions,omitempty"`
+}
+
+type V2CustomRoles struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	// +optional
+	// +kubebuilder:validation:MaxItems=100
+	Actions []string `json:"actions,omitempty"`
 }
 
 // RoleActionConfigStatus defines the observed state of RoleActionConfig
