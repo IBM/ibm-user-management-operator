@@ -24,7 +24,7 @@ metadata:
     categories: Security
     certified: "false"
     containerImage: icr.io/cpopen/ibm-user-management-operator:latest
-    createdAt: "2025-04-22T04:28:14Z"
+    createdAt: "2025-07-08T20:04:25Z"
     description: Operator for managing deployment of account-iam service.
     features.operators.openshift.io/disconnected: "true"
     nss.operator.ibm.com/managed-operators: ibm-user-management-operator
@@ -459,7 +459,7 @@ spec:
   - image: icr.io/cpopen/cpfs/api_service:1.0.0
     name: api-service
   - image: icr.io/cpopen/cpfs/account_service:1.0.0
-    name: account-management-service
+    name: account-service
   version: 1.0.0
   webhookdefinitions:
   - admissionReviewVersions:
