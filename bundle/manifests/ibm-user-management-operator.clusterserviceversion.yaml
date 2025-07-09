@@ -24,7 +24,7 @@ metadata:
     categories: Security
     certified: "false"
     containerImage: icr.io/cpopen/ibm-user-management-operator:latest
-    createdAt: "2025-07-08T20:30:55Z"
+    createdAt: "2025-07-09T17:50:49Z"
     description: Operator for managing deployment of account-iam service.
     features.operators.openshift.io/disconnected: "true"
     nss.operator.ibm.com/managed-operators: ibm-user-management-operator
@@ -61,32 +61,6 @@ spec:
     spec:
       clusterPermissions:
       - rules:
-        - apiGroups:
-          - operator.ibm.com
-          resources:
-          - roleactionconfigs
-          verbs:
-          - create
-          - delete
-          - get
-          - list
-          - patch
-          - update
-          - watch
-        - apiGroups:
-          - operator.ibm.com
-          resources:
-          - roleactionconfigs/finalizers
-          verbs:
-          - update
-        - apiGroups:
-          - operator.ibm.com
-          resources:
-          - roleactionconfigs/status
-          verbs:
-          - get
-          - patch
-          - update
         - apiGroups:
           - security.openshift.io
           resources:
@@ -405,6 +379,32 @@ spec:
           - get
           - list
           - watch
+        - apiGroups:
+          - operator.ibm.com
+          resources:
+          - roleactionconfigs
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - operator.ibm.com
+          resources:
+          - roleactionconfigs/finalizers
+          verbs:
+          - update
+        - apiGroups:
+          - operator.ibm.com
+          resources:
+          - roleactionconfigs/status
+          verbs:
+          - get
+          - patch
+          - update
         - apiGroups:
           - rbac.authorization.k8s.io
           resources:

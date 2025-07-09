@@ -33,9 +33,9 @@ type RoleActionConfigReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=operator.ibm.com,resources=roleactionconfigs,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=operator.ibm.com,resources=roleactionconfigs/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=operator.ibm.com,resources=roleactionconfigs/finalizers,verbs=update
+// +kubebuilder:rbac:groups=operator.ibm.com,namespace="placeholder",resources=roleactionconfigs,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=operator.ibm.com,namespace="placeholder",resources=roleactionconfigs/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=operator.ibm.com,namespace="placeholder",resources=roleactionconfigs/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
