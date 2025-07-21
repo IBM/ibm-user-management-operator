@@ -46,6 +46,39 @@ spec:
             type: object
           status:
             description: AccountIAMStatus defines the observed state of AccountIAM
+            properties:
+              service:
+                description: Service contains status information about the AccountIAM
+                  service and its managed resources
+                properties:
+                  apiVersion:
+                    type: string
+                  kind:
+                    type: string
+                  managedResources:
+                    items:
+                      description: ManagedResourceStatus represents the status of
+                        a resource managed by AccountIAM
+                      properties:
+                        apiVersion:
+                          type: string
+                        kind:
+                          type: string
+                        namespace:
+                          type: string
+                        objectName:
+                          type: string
+                        status:
+                          type: string
+                      type: object
+                    type: array
+                  namespace:
+                    type: string
+                  objectName:
+                    type: string
+                  status:
+                    type: string
+                type: object
             type: object
         type: object
     served: true

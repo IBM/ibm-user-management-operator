@@ -32,10 +32,30 @@ type AccountIAMSpec struct {
 	Foo string `json:"foo,omitempty"`
 }
 
+// ManagedResourceStatus represents the status of a resource managed by AccountIAM
+type ManagedResourceStatus struct {
+	ObjectName string `json:"objectName,omitempty"`
+	APIVersion string `json:"apiVersion,omitempty"`
+	Namespace  string `json:"namespace,omitempty"`
+	Kind       string `json:"kind,omitempty"`
+	Status     string `json:"status,omitempty"`
+}
+
+// ServiceStatus represents the status of the AccountIAM service and its managed resources
+type ServiceStatus struct {
+	ObjectName       string                  `json:"objectName,omitempty"`
+	APIVersion       string                  `json:"apiVersion,omitempty"`
+	Namespace        string                  `json:"namespace,omitempty"`
+	Kind             string                  `json:"kind,omitempty"`
+	Status           string                  `json:"status,omitempty"`
+	ManagedResources []ManagedResourceStatus `json:"managedResources,omitempty"`
+}
+
 // AccountIAMStatus defines the observed state of AccountIAM
 type AccountIAMStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+
+	// Service contains status information about the AccountIAM service and its managed resources
+	Service ServiceStatus `json:"service,omitempty"`
 }
 
 //+kubebuilder:object:root=true
