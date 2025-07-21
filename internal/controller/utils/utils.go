@@ -384,9 +384,9 @@ func WaitForOperatorReady(ctx context.Context, k8sClient client.Client, opreqNam
 			return false, err
 		}
 
-		klog.Infof("Waiting for all operators to be %s...", resources.OpreqPhaseRunning)
+		klog.Infof("Waiting for all operators to be %s...", resources.PhaseRunning)
 
-		if operandRequest.Status.Phase == resources.OpreqPhaseRunning {
+		if operandRequest.Status.Phase == resources.PhaseRunning {
 			klog.Infof("All operators are running in namespace %s.", ns)
 			return true, nil
 		}
@@ -405,7 +405,7 @@ func WaitForOperandReady(ctx context.Context, k8sClient client.Client, opreqName
 
 		allReady := true
 		for _, service := range operandRequest.Status.Services {
-			if service.Status != resources.OperandStatusReady {
+			if service.Status != resources.StatusReady {
 				klog.Infof("Service %s in namespace %s is not Ready. Current status: %s", service.OperatorName, service.Namespace, service.Status)
 				allReady = false
 			}

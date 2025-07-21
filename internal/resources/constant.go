@@ -37,6 +37,8 @@ const (
 	RedisAPIGroup = "redis.ibm.com"
 	// RedisVersion is the version of Redis
 	RedisVersion = "v1"
+	// RedisStatus is the status field in Redis CR
+	RedisStatus = "redisStatus"
 	//RedisURLssl
 	RedisURLssl = "redis-url-ssl"
 	//RedisPassword
@@ -45,12 +47,18 @@ const (
 	RedisCACert = "account-iam-ui-redis-ca-cert"
 	// RedisCert is the name of Redis service Certificate and secret
 	RedisSVCCert = "account-iam-ui-redis-svc-tls-cert"
-	// OpreqPhaseRunning is the Running status of Operand
-	OpreqPhaseRunning = "Running"
-	// OperandStatusReady is the Ready status of Operand
-	OperandStatusReady = "Ready"
-	// OperandStatusComp is the Completed status of Operand
-	OperandStatusComp = "Completed"
+	// PhaseRunning is the Running status
+	PhaseRunning = "Running"
+	// StatusCompleted is the Completed status
+	StatusCompleted = "Completed"
+	// StatusReady is the Ready status
+	StatusReady = "Ready"
+	// StatusNotReady is the NotReady status
+	StatusNotReady = "NotReady"
+	// StatusNotFound is the NotFound status
+	StatusNotFound = "NotFound"
+	// StatusError is the Error status
+	StatusError = "Error"
 	// IMPackage is the name of IM Operator
 	IMPackage = "ibm-im-operator"
 	// EDBClusterKind is the kind of Cluster

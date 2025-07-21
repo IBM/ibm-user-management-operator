@@ -22,6 +22,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"text/template"
 	"time"
@@ -198,6 +199,43 @@ func (r *AccountIAMReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		// Error reading the object - requeue the request.
 		return ctrl.Result{}, err
 	}
+
+	// Create a copy of the status to detect changes
+	originalStatus := instance.Status.DeepCopy()
+
+	// Defer status update for managed resources, will run even if reconcile returns early with error
+	defer func() {
+		r.updateManagedResourcesStatus(ctx, instance)
+
+		// logout the original status for debug
+		originalStatusBytes, _ := yaml.Marshal(originalStatus)
+		klog.Infof("AccountIAM CR %s/%s original status: %s", instance.Namespace, instance.Name, string(originalStatusBytes))
+		//logout the status for debug
+		statusBytes, _ := yaml.Marshal(instance.Status)
+		klog.Infof("AccountIAM CR %s/%s status: %s", instance.Namespace, instance.Name, string(statusBytes))
+
+		// Only update if status changed
+		if !reflect.DeepEqual(originalStatus, instance.Status) {
+			klog.Infof("Status changed, attempting update...")
+
+			// Try adding a retry mechanism
+			var updateErr error
+			for i := 0; i < 3; i++ {
+				updateErr = r.Status().Update(ctx, instance)
+				if updateErr == nil {
+					klog.Infof("Successfully updated AccountIAM status after %d attempts", i+1)
+					break
+				}
+
+				klog.Errorf("Failed to update AccountIAM status (attempt %d/3): %v", i+1, updateErr)
+				time.Sleep(1 * time.Second)
+			}
+
+			if updateErr != nil {
+				klog.Errorf("All attempts to update status failed: %v", updateErr)
+			}
+		}
+	}()
 
 	if err := r.verifyPrereq(ctx, instance); err != nil {
 		return ctrl.Result{}, err
@@ -394,7 +432,7 @@ func (r *AccountIAMReconciler) createRedisCR(ctx context.Context, instance *oper
 	}
 
 	// Wait for Redis CR to be ready
-	if err := utils.WaitForRediscp(ctx, r.Client, instance.Namespace, resources.Rediscp, resources.RedisAPIGroup, resources.RedisKind, resources.RedisVersion, resources.OperandStatusComp); err != nil {
+	if err := utils.WaitForRediscp(ctx, r.Client, instance.Namespace, resources.Rediscp, resources.RedisAPIGroup, resources.RedisKind, resources.RedisVersion, resources.StatusCompleted); err != nil {
 		return err
 	}
 	return nil
@@ -1162,6 +1200,63 @@ func (r *AccountIAMReconciler) createOrUpdate(ctx context.Context, obj *unstruct
 	}
 
 	return nil
+}
+
+// updateManagedResourcesStatus updates the status field of the AccountIAM CR
+// with information about all the resources it manages
+func (r *AccountIAMReconciler) updateManagedResourcesStatus(ctx context.Context, instance *operatorv1alpha1.AccountIAM) {
+	klog.Infof("Updating all the managed resources status in AccountIAM CR")
+
+	instance.Status.Service = operatorv1alpha1.ServiceStatus{
+		ObjectName: instance.Name,
+		APIVersion: instance.APIVersion,
+		Namespace:  instance.Namespace,
+		Kind:       instance.Kind,
+		Status:     resources.StatusReady, // Default to ready, will update if any resource is not ready
+	}
+
+	var managedResources []operatorv1alpha1.ManagedResourceStatus
+
+	// Get and update Redis CR status
+	redisResource := operatorv1alpha1.ManagedResourceStatus{
+		ObjectName: resources.Rediscp,
+		Namespace:  instance.Namespace,
+		Kind:       resources.RedisKind,
+		APIVersion: resources.RedisAPIGroup + "/" + resources.RedisVersion,
+		Status:     resources.StatusNotReady,
+	}
+
+	redisCR := utils.NewUnstructured(resources.RedisAPIGroup, resources.RedisKind, resources.RedisVersion)
+
+	if err := r.Get(ctx, client.ObjectKey{Name: resources.Rediscp, Namespace: instance.Namespace}, redisCR); err != nil {
+		if !k8serrors.IsNotFound(err) {
+			klog.Error(err, "Failed to get Redis CR")
+			redisResource.Status = resources.StatusError
+			instance.Status.Service.Status = resources.StatusNotReady
+		} else {
+			redisResource.Status = resources.StatusNotFound
+			instance.Status.Service.Status = resources.StatusNotReady
+		}
+	} else {
+		status, found, err := unstructured.NestedString(redisCR.Object, "status", resources.RedisStatus)
+		if err != nil || !found {
+			redisResource.Status = resources.StatusError
+			instance.Status.Service.Status = resources.StatusNotReady
+		} else if status == resources.StatusCompleted {
+			redisResource.Status = resources.StatusCompleted
+		} else {
+			redisResource.Status = resources.StatusNotReady
+			instance.Status.Service.Status = resources.StatusNotReady
+		}
+	}
+
+	managedResources = append(managedResources, redisResource)
+
+	instance.Status.Service.ManagedResources = managedResources
+
+	klog.Info("Service status updated with managed resources: ",
+		"resourceCount: ", len(managedResources),
+		" serviceStatus: ", instance.Status.Service.Status)
 }
 
 // SetupWithManager sets up the controller with the Manager.
