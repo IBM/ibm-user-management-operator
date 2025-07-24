@@ -1207,18 +1207,26 @@ func (r *AccountIAMReconciler) createOrUpdate(ctx context.Context, obj *unstruct
 func (r *AccountIAMReconciler) updateManagedResourcesStatus(ctx context.Context, instance *operatorv1alpha1.AccountIAM) {
 	klog.Infof("Updating all the managed resources status in AccountIAM CR")
 
-	instance.Status.Service = operatorv1alpha1.ServiceStatus{
-		ObjectName: instance.Name,
-		APIVersion: instance.APIVersion,
-		Namespace:  instance.Namespace,
-		Kind:       instance.Kind,
-		Status:     resources.StatusReady, // Default to ready, will update if any resource is not ready
+	umService := odlm.ServiceStatus{
+		OperatorName: "ibm-user-management-operator",
+		Namespace:    instance.Namespace,
+		Status:       resources.PhaseRunning, // Default to running, will update if any resource is not ready
+
 	}
 
-	var managedResources []operatorv1alpha1.ManagedResourceStatus
+	// AccountIAM as the top operand
+	accountIAMOperand := odlm.OperandStatus{
+		ObjectName: instance.Name,
+		Namespace:  instance.Namespace,
+		Kind:       "AccountIAM",
+		APIVersion: "operator.ibm.com/v1alpha1",
+		Status:     resources.PhaseRunning,
+	}
 
-	// Get and update Redis CR status
-	redisResource := operatorv1alpha1.ManagedResourceStatus{
+	var managedResources []odlm.ResourceStatus
+
+	// Get and check Redis CR status
+	redisResource := odlm.ResourceStatus{
 		ObjectName: resources.Rediscp,
 		Namespace:  instance.Namespace,
 		Kind:       resources.RedisKind,
@@ -1227,36 +1235,89 @@ func (r *AccountIAMReconciler) updateManagedResourcesStatus(ctx context.Context,
 	}
 
 	redisCR := utils.NewUnstructured(resources.RedisAPIGroup, resources.RedisKind, resources.RedisVersion)
-
 	if err := r.Get(ctx, client.ObjectKey{Name: resources.Rediscp, Namespace: instance.Namespace}, redisCR); err != nil {
 		if !k8serrors.IsNotFound(err) {
 			klog.Error(err, "Failed to get Redis CR")
 			redisResource.Status = resources.StatusError
-			instance.Status.Service.Status = resources.StatusNotReady
+			umService.Status = resources.StatusNotReady
+			accountIAMOperand.Status = resources.StatusNotReady
 		} else {
 			redisResource.Status = resources.StatusNotFound
-			instance.Status.Service.Status = resources.StatusNotReady
+			umService.Status = resources.StatusNotReady
+			accountIAMOperand.Status = resources.StatusNotReady
 		}
 	} else {
 		status, found, err := unstructured.NestedString(redisCR.Object, "status", resources.RedisStatus)
 		if err != nil || !found {
 			redisResource.Status = resources.StatusError
-			instance.Status.Service.Status = resources.StatusNotReady
+			umService.Status = resources.StatusNotReady
+			accountIAMOperand.Status = resources.StatusNotReady
 		} else if status == resources.StatusCompleted {
 			redisResource.Status = resources.StatusCompleted
 		} else {
 			redisResource.Status = resources.StatusNotReady
-			instance.Status.Service.Status = resources.StatusNotReady
+			umService.Status = resources.StatusNotReady
+			accountIAMOperand.Status = resources.StatusNotReady
 		}
 	}
 
 	managedResources = append(managedResources, redisResource)
 
-	instance.Status.Service.ManagedResources = managedResources
+	// Add UM OperandRequest status as another managed resource
+	operandReq := &odlm.OperandRequest{}
+	if err := r.Get(ctx, client.ObjectKey{Name: resources.UserMgmtOpreq, Namespace: instance.Namespace}, operandReq); err == nil {
+		umOpreqResource := odlm.ResourceStatus{
+			ObjectName: operandReq.Name,
+			Namespace:  operandReq.Namespace,
+			Kind:       "OperandRequest",
+			APIVersion: "operator.ibm.com/v1alpha1",
+			Status:     resources.StatusNotReady,
+		}
 
-	klog.Info("Service status updated with managed resources: ",
-		"resourceCount: ", len(managedResources),
-		" serviceStatus: ", instance.Status.Service.Status)
+		if operandReq.Status.Phase == "Running" {
+			umOpreqResource.Status = resources.PhaseRunning
+		} else if operandReq.Status.Phase != "" {
+			umOpreqResource.Status = string(operandReq.Status.Phase)
+			if operandReq.Status.Phase != "Running" {
+				umService.Status = resources.StatusNotReady
+				accountIAMOperand.Status = resources.StatusNotReady
+			}
+		}
+
+		managedResources = append(managedResources, umOpreqResource)
+	} else {
+		klog.Error(err, "Failed to get OperandRequest for User Management")
+		umService.Status = resources.StatusNotReady
+		accountIAMOperand.Status = resources.StatusNotReady
+	}
+
+	accountIAMOperand.ManagedResources = managedResources
+
+	// Add AccountIAM operand to the service resources
+	var operandStatuses []odlm.OperandStatus
+	operandStatuses = append(operandStatuses, accountIAMOperand)
+	umService.Resources = operandStatuses
+
+	if instance.Status.Services == nil {
+		instance.Status.Services = []odlm.ServiceStatus{}
+	}
+
+	serviceFound := false
+	for i, svc := range instance.Status.Services {
+		if svc.OperatorName == umService.OperatorName {
+			instance.Status.Services[i] = umService
+			serviceFound = true
+			break
+		}
+	}
+
+	if !serviceFound {
+		instance.Status.Services = append(instance.Status.Services, umService)
+	}
+
+	klog.Info("Account IAM Services status updated",
+		"resourceCount", len(managedResources),
+		"serviceStatus", umService.Status)
 }
 
 // SetupWithManager sets up the controller with the Manager.

@@ -47,38 +47,52 @@ spec:
           status:
             description: AccountIAMStatus defines the observed state of AccountIAM
             properties:
-              service:
-                description: Service contains status information about the AccountIAM
-                  service and its managed resources
-                properties:
-                  apiVersion:
-                    type: string
-                  kind:
-                    type: string
-                  managedResources:
-                    items:
-                      description: ManagedResourceStatus represents the status of
-                        a resource managed by AccountIAM
-                      properties:
-                        apiVersion:
-                          type: string
-                        kind:
-                          type: string
-                        namespace:
-                          type: string
-                        objectName:
-                          type: string
-                        status:
-                          type: string
-                      type: object
-                    type: array
-                  namespace:
-                    type: string
-                  objectName:
-                    type: string
-                  status:
-                    type: string
-                type: object
+              services:
+                description: Import the ServiceStatus from odlm
+                items:
+                  properties:
+                    namespace:
+                      type: string
+                    operatorName:
+                      type: string
+                    resources:
+                      description: LastUpdateTime string `json:"lastTransitionTime,omitempty"`
+                      items:
+                        properties:
+                          apiVersion:
+                            type: string
+                          kind:
+                            type: string
+                          managedResources:
+                            description: Message string `json:"message,omitempty"`
+                            items:
+                              properties:
+                                apiVersion:
+                                  type: string
+                                kind:
+                                  type: string
+                                namespace:
+                                  type: string
+                                objectName:
+                                  type: string
+                                status:
+                                  description: Type string `json:"type,omitempty"`
+                                  type: string
+                              type: object
+                            type: array
+                          namespace:
+                            type: string
+                          objectName:
+                            type: string
+                          status:
+                            type: string
+                        type: object
+                      type: array
+                    status:
+                      description: Type string `json:"type,omitempty"`
+                      type: string
+                  type: object
+                type: array
             type: object
         type: object
     served: true
