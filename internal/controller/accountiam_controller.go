@@ -1207,20 +1207,13 @@ func (r *AccountIAMReconciler) createOrUpdate(ctx context.Context, obj *unstruct
 func (r *AccountIAMReconciler) updateManagedResourcesStatus(ctx context.Context, instance *operatorv1alpha1.AccountIAM) {
 	klog.Infof("Updating all the managed resources status in AccountIAM CR")
 
-	umService := odlm.ServiceStatus{
-		OperatorName: resources.UserMgmtOperator,
-		Namespace:    instance.Namespace,
-		Status:       resources.PhaseRunning, // Default to running, will update if any resource is not ready
-
-	}
-
-	// AccountIAM as the top operand
-	accountIAMOperand := odlm.OperandStatus{
+	// Create a direct AccountIAM service status
+	accountIAMService := odlm.OperandStatus{
 		ObjectName: instance.Name,
-		Namespace:  instance.Namespace,
 		Kind:       resources.UserMgmtCR,
 		APIVersion: resources.OperatorIBMApiVersion,
-		Status:     resources.PhaseRunning,
+		Namespace:  instance.Namespace,
+		Status:     resources.PhaseRunning, // Default to running, will update if any resource is not ready
 	}
 
 	var managedResources []odlm.ResourceStatus
@@ -1240,7 +1233,7 @@ func (r *AccountIAMReconciler) updateManagedResourcesStatus(ctx context.Context,
 		allResourcesReady = false
 	}
 
-	// Check job statuses - add any specific jobs you want to monitor
+	// Check job statuses
 	jobsToCheck := []string{resources.CreateDBJob, resources.DBMigrationJob, resources.IMConfigJob}
 	for _, jobName := range jobsToCheck {
 		jobResource, jobReady := utils.GetJobStatus(ctx, r.Client, jobName, instance.Namespace)
@@ -1250,42 +1243,17 @@ func (r *AccountIAMReconciler) updateManagedResourcesStatus(ctx context.Context,
 		}
 	}
 
-	// Update overall status based on resource readiness
 	if !allResourcesReady {
-		umService.Status = resources.StatusNotReady
-		accountIAMOperand.Status = resources.StatusNotReady
+		accountIAMService.Status = resources.StatusNotReady
 	}
 
-	// Set managed resources on the operand
-	accountIAMOperand.ManagedResources = managedResources
+	accountIAMService.ManagedResources = managedResources
 
-	// Add AccountIAM operand to service resources
-	var operandStatuses []odlm.OperandStatus
-	operandStatuses = append(operandStatuses, accountIAMOperand)
-	umService.Resources = operandStatuses
+	instance.Status.Service = accountIAMService
 
-	// Initialize services array if needed
-	if instance.Status.Services == nil {
-		instance.Status.Services = []odlm.ServiceStatus{}
-	}
-
-	// Update service in the services array
-	serviceFound := false
-	for i, svc := range instance.Status.Services {
-		if svc.OperatorName == umService.OperatorName {
-			instance.Status.Services[i] = umService
-			serviceFound = true
-			break
-		}
-	}
-
-	if !serviceFound {
-		instance.Status.Services = append(instance.Status.Services, umService)
-	}
-
-	klog.Info("Account IAM Services status updated",
+	klog.Info("Account IAM service status updated",
 		"resourceCount", len(managedResources),
-		"serviceStatus", umService.Status,
+		"serviceStatus", accountIAMService.Status,
 		"allResourcesReady", allResourcesReady)
 }
 

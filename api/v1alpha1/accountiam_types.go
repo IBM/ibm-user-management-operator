@@ -55,8 +55,8 @@ type AccountIAMSpec struct {
 // AccountIAMStatus defines the observed state of AccountIAM
 type AccountIAMStatus struct {
 
-	// Import the ServiceStatus from odlm
-	Services []odlm.ServiceStatus `json:"services,omitempty"`
+	// Import the operandstatus from odlm
+	Service odlm.OperandStatus `json:"service,omitempty"`
 }
 
 //+kubebuilder:object:root=true
