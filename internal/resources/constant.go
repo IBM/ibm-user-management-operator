@@ -19,10 +19,18 @@ package resources
 const (
 	// Default User Management CR
 	UserMgmtCR = "AccountIAM"
+	// UserMgmtOperator is the subscription name of User Management Operator
+	UserMgmtOperator = "ibm-user-management-operator"
+	// OperatorIBMApiVersion is the api version of IBM Operator
+	OperatorIBMApiVersion = "operator.ibm.com/v1alpha1"
 	// Default OperandRequest
 	UserMgmtOpreq = "ibm-user-management-request"
 	// OpreqKind is the kind of OperandConfig
 	OpreqKind = "OperandRequest"
+	// JobKind is the kind of Job
+	JobKind = "Job"
+	// JobAPIGroup is the api group of Job
+	JobAPIGroup = "batch/v1"
 	// CSCASecret is the name of the secret for CA certificate
 	CSCASecret = "cs-ca-certificate-secret"
 	// RedisCertKey is the key of Redis CA Certificate
@@ -57,6 +65,10 @@ const (
 	StatusNotReady = "NotReady"
 	// StatusNotFound is the NotFound status
 	StatusNotFound = "NotFound"
+	// StatusPending is the Pending status
+	StatusPending = "Pending"
+	// StatusFailed is the Failed status
+	StatusFailed = "Failed"
 	// StatusError is the Error status
 	StatusError = "Error"
 	// IMPackage is the name of IM Operator

@@ -369,6 +369,112 @@ func checkKeyBeforeMerging(key string, defaultMap, changedMap interface{}, final
 	}
 }
 
+// ------------------ Resource Status Functions --------------
+
+// GetRedisResourceStatus checks the status of Redis resources
+func GetRedisResourceStatus(ctx context.Context, k8sClient client.Client, namespace string) (odlm.ResourceStatus, bool) {
+	redisResource := odlm.ResourceStatus{
+		ObjectName: resources.Rediscp,
+		Namespace:  namespace,
+		Kind:       resources.RedisKind,
+		APIVersion: resources.RedisAPIGroup + "/" + resources.RedisVersion,
+		Status:     resources.StatusNotReady,
+	}
+
+	redisCR := NewUnstructured(resources.RedisAPIGroup, resources.RedisKind, resources.RedisVersion)
+	if err := k8sClient.Get(ctx, client.ObjectKey{Name: resources.Rediscp, Namespace: namespace}, redisCR); err != nil {
+		if !k8serrors.IsNotFound(err) {
+			klog.Error(err, "Failed to get Redis CR")
+			redisResource.Status = resources.StatusError
+			return redisResource, false
+		} else {
+			redisResource.Status = resources.StatusNotFound
+			return redisResource, false
+		}
+	}
+
+	status, found, err := unstructured.NestedString(redisCR.Object, "status", resources.RedisStatus)
+	if err != nil || !found {
+		redisResource.Status = resources.StatusError
+		return redisResource, false
+	} else if status == resources.StatusCompleted {
+		redisResource.Status = resources.StatusCompleted
+		return redisResource, true
+	} else {
+		redisResource.Status = resources.StatusNotReady
+		return redisResource, false
+	}
+}
+
+// GetOperandRequestStatus checks the status of OperandRequest
+func GetOperandRequestStatus(ctx context.Context, k8sClient client.Client, namespace string) (odlm.ResourceStatus, bool) {
+	umOpreqResource := odlm.ResourceStatus{
+		ObjectName: resources.UserMgmtOpreq,
+		Namespace:  namespace,
+		Kind:       resources.OpreqKind,
+		APIVersion: resources.OperatorIBMApiVersion,
+		Status:     resources.StatusNotReady,
+	}
+
+	operandReq := &odlm.OperandRequest{}
+	if err := k8sClient.Get(ctx, client.ObjectKey{Name: resources.UserMgmtOpreq, Namespace: namespace}, operandReq); err != nil {
+		if !k8serrors.IsNotFound(err) {
+			klog.Error(err, "Failed to get OperandRequest %s in namespace %s", resources.UserMgmtOpreq, namespace)
+			umOpreqResource.Status = resources.StatusError
+			return umOpreqResource, false
+		} else {
+			umOpreqResource.Status = resources.StatusNotFound
+			return umOpreqResource, false
+		}
+	}
+
+	if operandReq.Status.Phase == resources.PhaseRunning {
+		umOpreqResource.Status = resources.PhaseRunning
+		return umOpreqResource, true
+	} else {
+		umOpreqResource.Status = string(operandReq.Status.Phase)
+		return umOpreqResource, false
+	}
+}
+
+// GetJobStatus checks the status of a specific job
+func GetJobStatus(ctx context.Context, k8sClient client.Client, jobName, namespace string) (odlm.ResourceStatus, bool) {
+	jobResource := odlm.ResourceStatus{
+		ObjectName: jobName,
+		Namespace:  namespace,
+		Kind:       resources.JobKind,
+		APIVersion: resources.JobAPIGroup,
+		Status:     resources.StatusNotReady,
+	}
+
+	job := &batchv1.Job{}
+	if err := k8sClient.Get(ctx, client.ObjectKey{Name: jobName, Namespace: namespace}, job); err != nil {
+		if !k8serrors.IsNotFound(err) {
+			klog.Error(err, "Failed to get Job %s in namespace %s", jobName, namespace)
+			jobResource.Status = resources.StatusError
+			return jobResource, false
+		} else {
+			jobResource.Status = resources.StatusNotFound
+			return jobResource, false
+		}
+	}
+
+	for _, condition := range job.Status.Conditions {
+		if condition.Type == batchv1.JobComplete && condition.Status == corev1.ConditionTrue {
+			jobResource.Status = resources.StatusCompleted
+			return jobResource, true
+		}
+		if condition.Type == batchv1.JobFailed && condition.Status == corev1.ConditionTrue {
+			jobResource.Status = resources.StatusFailed
+			return jobResource, false
+		}
+	}
+
+	// Job is still running
+	jobResource.Status = "Running"
+	return jobResource, false
+}
+
 // -------------- Wait Functions --------------
 
 // WaitForOperatorReady check operator status in OperandRequest
