@@ -209,7 +209,6 @@ func (r *AccountIAMReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 		// Only update if status changed
 		if !reflect.DeepEqual(originalStatus, instance.Status) {
-			klog.Infof("Status changed, attempting update...")
 
 			// Try adding a retry mechanism
 			var updateErr error
@@ -1198,7 +1197,6 @@ func (r *AccountIAMReconciler) createOrUpdate(ctx context.Context, obj *unstruct
 // updateManagedResourcesStatus updates the status field of the AccountIAM CR
 // with information about all the resources it manages
 func (r *AccountIAMReconciler) updateManagedResourcesStatus(ctx context.Context, instance *operatorv1alpha1.AccountIAM) {
-	klog.Infof("Updating all the managed resources status in AccountIAM CR")
 
 	// Create a direct AccountIAM service status
 	accountIAMService := odlm.OperandStatus{
@@ -1292,7 +1290,7 @@ func (r *AccountIAMReconciler) updateManagedResourcesStatus(ctx context.Context,
 
 	instance.Status.Service = accountIAMService
 
-	klog.Infof("Account IAM service status updated: resourceCount %d, status is %s",
+	klog.Infof("Account IAM service status: resourceCount %d, status is %s",
 		len(accountIAMService.ManagedResources), accountIAMService.Status)
 
 }

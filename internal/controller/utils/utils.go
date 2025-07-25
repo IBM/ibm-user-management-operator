@@ -587,7 +587,7 @@ func GetRouteStatus(ctx context.Context, k8sClient client.Client, routeName, nam
 
 // WaitForOperatorReady check operator status in OperandRequest
 func WaitForOperatorReady(ctx context.Context, k8sClient client.Client, opreqName, ns string) error {
-	return wait.PollImmediate(30*time.Second, 10*time.Minute, func() (bool, error) {
+	return wait.PollUntilContextTimeout(ctx, 30*time.Second, 10*time.Minute, false, func(ctx context.Context) (bool, error) {
 		operandRequest := &odlm.OperandRequest{}
 		if err := k8sClient.Get(ctx, client.ObjectKey{Name: opreqName, Namespace: ns}, operandRequest); err != nil {
 			if k8serrors.IsNotFound(err) {
@@ -611,7 +611,7 @@ func WaitForOperatorReady(ctx context.Context, k8sClient client.Client, opreqNam
 
 // WaitForOperandReady checks if all services in OperandRequest are ready
 func WaitForOperandReady(ctx context.Context, k8sClient client.Client, opreqName, ns string) error {
-	return wait.PollImmediate(60*time.Second, 10*time.Minute, func() (bool, error) {
+	return wait.PollUntilContextTimeout(ctx, 60*time.Second, 10*time.Minute, false, func(ctx context.Context) (bool, error) {
 		operandRequest := &odlm.OperandRequest{}
 		if err := k8sClient.Get(ctx, types.NamespacedName{Name: opreqName, Namespace: ns}, operandRequest); err != nil {
 			return false, err
@@ -636,8 +636,7 @@ func WaitForOperandReady(ctx context.Context, k8sClient client.Client, opreqName
 
 // waitForResource waits for the resource to be completed
 func WaitForRediscp(ctx context.Context, k8sClient client.Client, ns, name, group, kind, version, compStatus string) error {
-	return wait.PollImmediate(30*time.Second, 10*time.Minute, func() (bool, error) {
-
+	return wait.PollUntilContextTimeout(ctx, 30*time.Second, 10*time.Minute, false, func(ctx context.Context) (bool, error) {
 		redisCR := NewUnstructured(group, kind, version)
 		if err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: ns}, redisCR); err != nil {
 			if k8serrors.IsNotFound(err) {
@@ -665,8 +664,7 @@ func WaitForRediscp(ctx context.Context, k8sClient client.Client, ns, name, grou
 
 // WaitForDeploymentReady waits for the deployment to be ready
 func WaitForDeploymentReady(ctx context.Context, k8sClient client.Client, ns, label string) error {
-
-	return wait.PollImmediate(20*time.Second, 10*time.Minute, func() (bool, error) {
+	return wait.PollUntilContextTimeout(ctx, 20*time.Second, 10*time.Minute, false, func(ctx context.Context) (bool, error) {
 		deployments := &appsv1.DeploymentList{}
 
 		if err := k8sClient.List(ctx, deployments, &client.ListOptions{Namespace: ns}); err != nil {
@@ -703,8 +701,7 @@ func WaitForDeploymentReady(ctx context.Context, k8sClient client.Client, ns, la
 
 // WaitForJob waits for the job to be succeeded
 func WaitForJob(ctx context.Context, k8sClient client.Client, ns, name string) error {
-
-	return wait.PollImmediate(20*time.Second, 2*time.Minute, func() (bool, error) {
+	return wait.PollUntilContextTimeout(ctx, 20*time.Second, 2*time.Minute, false, func(ctx context.Context) (bool, error) {
 		job := &batchv1.Job{}
 		if err := k8sClient.Get(ctx, client.ObjectKey{Name: name, Namespace: ns}, job); err != nil {
 			if k8serrors.IsNotFound(err) {
