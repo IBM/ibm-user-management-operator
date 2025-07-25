@@ -207,13 +207,6 @@ func (r *AccountIAMReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	defer func() {
 		r.updateManagedResourcesStatus(ctx, instance)
 
-		// logout the original status for debug
-		originalStatusBytes, _ := yaml.Marshal(originalStatus)
-		klog.Infof("AccountIAM CR %s/%s original status: %s", instance.Namespace, instance.Name, string(originalStatusBytes))
-		//logout the status for debug
-		statusBytes, _ := yaml.Marshal(instance.Status)
-		klog.Infof("AccountIAM CR %s/%s status: %s", instance.Namespace, instance.Name, string(statusBytes))
-
 		// Only update if status changed
 		if !reflect.DeepEqual(originalStatus, instance.Status) {
 			klog.Infof("Status changed, attempting update...")
@@ -397,7 +390,7 @@ func (r *AccountIAMReconciler) createOperandRequest(ctx context.Context, instanc
 func (r *AccountIAMReconciler) createRedisCR(ctx context.Context, instance *operatorv1alpha1.AccountIAM) error {
 
 	// Check if Redis CRD exists
-	if existRedis, err := utils.CheckCRD(r.Config, utils.Concat(resources.RedisAPIGroup, "/", resources.RedisVersion), resources.RedisKind); err != nil {
+	if existRedis, err := utils.CheckCRD(r.Config, utils.Concat(resources.RedisAPIGroup, "/", resources.Version), resources.RedisKind); err != nil {
 		return err
 	} else if !existRedis {
 		return errors.New("redis CRD not found")
@@ -432,7 +425,7 @@ func (r *AccountIAMReconciler) createRedisCR(ctx context.Context, instance *oper
 	}
 
 	// Wait for Redis CR to be ready
-	if err := utils.WaitForRediscp(ctx, r.Client, instance.Namespace, resources.Rediscp, resources.RedisAPIGroup, resources.RedisKind, resources.RedisVersion, resources.StatusCompleted); err != nil {
+	if err := utils.WaitForRediscp(ctx, r.Client, instance.Namespace, resources.Rediscp, resources.RedisAPIGroup, resources.RedisKind, resources.Version, resources.StatusCompleted); err != nil {
 		return err
 	}
 	return nil
@@ -1243,6 +1236,54 @@ func (r *AccountIAMReconciler) updateManagedResourcesStatus(ctx context.Context,
 		}
 	}
 
+	// Check service statuses
+	servicesToCheck := []string{
+		resources.AccountIAM,
+		resources.AccountIAMUIService,
+		resources.AccountIAMUIAPIService,
+	}
+	for _, serviceName := range servicesToCheck {
+		serviceResource, serviceReady := utils.GetServiceStatus(ctx, r.Client, serviceName, instance.Namespace)
+		managedResources = append(managedResources, serviceResource)
+		if !serviceReady {
+			allResourcesReady = false
+		}
+	}
+
+	// Check secret statuses
+	secretsToCheck := []string{
+		resources.BootstrapSecret,
+		resources.AccountIAMDBSecret,
+		resources.AccountIAMConfigSecret,
+		resources.AccountIAMOidcClientAuth,
+		resources.AccountIAMOKDAuth,
+		resources.AccountIAMUISecrets,
+		resources.IMOIDCCrendential,
+		resources.IMAPISecret,
+		resources.AccountIAMCACert,
+	}
+	for _, secretName := range secretsToCheck {
+		secretResource, secretReady := utils.GetSecretStatus(ctx, r.Client, secretName, instance.Namespace)
+		managedResources = append(managedResources, secretResource)
+		if !secretReady {
+			allResourcesReady = false
+		}
+	}
+
+	// Check route statuses
+	routesToCheck := []string{
+		resources.AccountIAM,
+		resources.AccountIAMUIRoute,
+		resources.AccountIAMUIAPIInstance,
+	}
+	for _, routeName := range routesToCheck {
+		routeResource, routeReady := utils.GetRouteStatus(ctx, r.Client, routeName, instance.Namespace)
+		managedResources = append(managedResources, routeResource)
+		if !routeReady {
+			allResourcesReady = false
+		}
+	}
+
 	if !allResourcesReady {
 		accountIAMService.Status = resources.StatusNotReady
 	}
@@ -1251,10 +1292,9 @@ func (r *AccountIAMReconciler) updateManagedResourcesStatus(ctx context.Context,
 
 	instance.Status.Service = accountIAMService
 
-	klog.Info("Account IAM service status updated",
-		"resourceCount", len(managedResources),
-		"serviceStatus", accountIAMService.Status,
-		"allResourcesReady", allResourcesReady)
+	klog.Infof("Account IAM service status updated: resourceCount %d, status is %s",
+		len(accountIAMService.ManagedResources), accountIAMService.Status)
+
 }
 
 // SetupWithManager sets up the controller with the Manager.

@@ -27,10 +27,22 @@ const (
 	UserMgmtOpreq = "ibm-user-management-request"
 	// OpreqKind is the kind of OperandConfig
 	OpreqKind = "OperandRequest"
+	// SericeKind is the kind of Service
+	ServiceKind = "Service"
+	// SecretKind is the kind of Secret
+	SecretKind = "Secret"
+	// RouteKind is the kind of Route
+	RouteKind = "Route"
+	// RouteAPIGroup is the api group of Route
+	RouteAPIGroup = "route.openshift.io"
+	// Version is the version of some resources
+	Version = "v1"
 	// JobKind is the kind of Job
 	JobKind = "Job"
 	// JobAPIGroup is the api group of Job
 	JobAPIGroup = "batch/v1"
+	//AccountIAM is the name of the Account IAM resources
+	AccountIAM = "account-iam"
 	// CSCASecret is the name of the secret for CA certificate
 	CSCASecret = "cs-ca-certificate-secret"
 	// RedisCertKey is the key of Redis CA Certificate
@@ -43,8 +55,6 @@ const (
 	RedisKind = "Rediscp"
 	// RedisAPIGroup is the api group of Redis
 	RedisAPIGroup = "redis.ibm.com"
-	// RedisVersion is the version of Redis
-	RedisVersion = "v1"
 	// RedisStatus is the status field in Redis CR
 	RedisStatus = "redisStatus"
 	//RedisURLssl
@@ -85,6 +95,22 @@ const (
 	DBMigrationJob = "account-iam-db-migration-mcspid"
 	// AccountIAMDBSecret is the name of the secret for Account IAM database
 	AccountIAMDBSecret = "account-iam-database-secret"
+	// AccountIAMConfigSecret is the name of the secret for Account IAM mpconfig
+	AccountIAMConfigSecret = "account-iam-mpconfig-secrets"
+	// AccountIAMOidcClientAuth is the name of the secret for Account IAM OIDC client auth
+	AccountIAMOidcClientAuth = "account-iam-oidc-client-auth"
+	// AccountIAMOKDAuth is the name of the secret for Account IAM OKD auth
+	AccountIAMOKDAuth = "account-iam-okd-auth"
+	// AccountIAMUISecrets is the name of the secret for Account IAM UI config
+	AccountIAMUISecrets = "account-iam-ui-secrets"
+	// AccountIAMUIRoute is the name of the route for Account IAM UI
+	AccountIAMUIRoute = "account-iam-ui-account"
+	// AccountIAMUIAPIInstance is the name of the API instance for Account IAM UI
+	AccountIAMUIAPIInstance = "account-iam-ui-api-instance"
+	// AccountIAMUIAPIService is the name of the API service for Account IAM UI
+	AccountIAMUIAPIService = "account-iam-ui-api-service"
+	//	AccountIAMUIService is the name of the Account service for Account IAM UI
+	AccountIAMUIService = "account-iam-ui-account-service"
 	// AccountIAMCACert is the name of the Account IAM CA certificate and secret
 	AccountIAMCACert = "account-iam-ca-cert"
 	// AccountIAMSVCCert is the name of the Account IAM service certificate and secret

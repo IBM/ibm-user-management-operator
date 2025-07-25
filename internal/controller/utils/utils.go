@@ -377,11 +377,11 @@ func GetRedisResourceStatus(ctx context.Context, k8sClient client.Client, namesp
 		ObjectName: resources.Rediscp,
 		Namespace:  namespace,
 		Kind:       resources.RedisKind,
-		APIVersion: resources.RedisAPIGroup + "/" + resources.RedisVersion,
+		APIVersion: resources.RedisAPIGroup + "/" + resources.Version,
 		Status:     resources.StatusNotReady,
 	}
 
-	redisCR := NewUnstructured(resources.RedisAPIGroup, resources.RedisKind, resources.RedisVersion)
+	redisCR := NewUnstructured(resources.RedisAPIGroup, resources.RedisKind, resources.Version)
 	if err := k8sClient.Get(ctx, client.ObjectKey{Name: resources.Rediscp, Namespace: namespace}, redisCR); err != nil {
 		if !k8serrors.IsNotFound(err) {
 			klog.Error(err, "Failed to get Redis CR")
@@ -471,8 +471,116 @@ func GetJobStatus(ctx context.Context, k8sClient client.Client, jobName, namespa
 	}
 
 	// Job is still running
-	jobResource.Status = "Running"
+	jobResource.Status = resources.PhaseRunning
 	return jobResource, false
+}
+
+// GetServiceStatus checks if a service exists and is properly configured
+func GetServiceStatus(ctx context.Context, k8sClient client.Client, serviceName, namespace string) (odlm.ResourceStatus, bool) {
+	serviceResource := odlm.ResourceStatus{
+		ObjectName: serviceName,
+		Namespace:  namespace,
+		Kind:       resources.ServiceKind,
+		APIVersion: resources.Version,
+		Status:     resources.StatusNotReady,
+	}
+
+	service := &corev1.Service{}
+	if err := k8sClient.Get(ctx, client.ObjectKey{Name: serviceName, Namespace: namespace}, service); err != nil {
+		if !k8serrors.IsNotFound(err) {
+			klog.Error(err, "Failed to get Service %s in namespace %s", serviceName, namespace)
+			serviceResource.Status = resources.StatusError
+			return serviceResource, false
+		} else {
+			serviceResource.Status = resources.StatusNotFound
+			return serviceResource, false
+		}
+	}
+
+	// Check if the service has cluster IP assigned
+	if service.Spec.ClusterIP == "" || service.Spec.ClusterIP == "None" {
+		// This is a headless service which is OK
+		if service.Spec.Type == "ClusterIP" && service.Spec.ClusterIP == "None" {
+			serviceResource.Status = resources.StatusCompleted
+			return serviceResource, true
+		}
+
+		serviceResource.Status = resources.StatusNotReady
+		return serviceResource, false
+	}
+
+	// Service exists with ClusterIP, consider it ready
+	serviceResource.Status = resources.StatusCompleted
+	return serviceResource, true
+}
+
+// GetSecretStatus checks if a secret exists and is properly configured
+func GetSecretStatus(ctx context.Context, k8sClient client.Client, secretName, namespace string) (odlm.ResourceStatus, bool) {
+	secretResource := odlm.ResourceStatus{
+		ObjectName: secretName,
+		Namespace:  namespace,
+		Kind:       resources.SecretKind,
+		APIVersion: resources.Version,
+		Status:     resources.StatusNotReady,
+	}
+
+	secret := &corev1.Secret{}
+	if err := k8sClient.Get(ctx, client.ObjectKey{Name: secretName, Namespace: namespace}, secret); err != nil {
+		if !k8serrors.IsNotFound(err) {
+			klog.Error(err, "Failed to get Secret %s in namespace %s", secretName, namespace)
+			secretResource.Status = resources.StatusError
+			return secretResource, false
+		} else {
+			secretResource.Status = resources.StatusNotFound
+			return secretResource, false
+		}
+	}
+
+	// Secret exists, consider it ready
+	secretResource.Status = resources.StatusCompleted
+	return secretResource, true
+}
+
+// GetRouteStatus checks if a route exists and is properly configured
+func GetRouteStatus(ctx context.Context, k8sClient client.Client, routeName, namespace string) (odlm.ResourceStatus, bool) {
+	routeResource := odlm.ResourceStatus{
+		ObjectName: routeName,
+		Namespace:  namespace,
+		Kind:       resources.RouteKind,
+		APIVersion: resources.RouteAPIGroup + "/" + resources.Version,
+		Status:     resources.StatusNotReady,
+	}
+
+	route := &routev1.Route{}
+	if err := k8sClient.Get(ctx, client.ObjectKey{Name: routeName, Namespace: namespace}, route); err != nil {
+		if !k8serrors.IsNotFound(err) {
+			klog.Error(err, "Failed to get Route %s in namespace %s", routeName, namespace)
+			routeResource.Status = resources.StatusError
+			return routeResource, false
+		} else {
+			routeResource.Status = resources.StatusNotFound
+			return routeResource, false
+		}
+	}
+
+	// Check if the route has ingress
+	if len(route.Status.Ingress) == 0 {
+		routeResource.Status = resources.StatusNotReady
+		return routeResource, false
+	}
+
+	// Check if at least one ingress is admitted
+	for _, ingress := range route.Status.Ingress {
+		for _, condition := range ingress.Conditions {
+			if condition.Type == routev1.RouteAdmitted && condition.Status == corev1.ConditionTrue {
+				routeResource.Status = resources.StatusCompleted
+				return routeResource, true
+			}
+		}
+	}
+
+	routeResource.Status = resources.StatusNotReady
+	return routeResource, false
 }
 
 // -------------- Wait Functions --------------
