@@ -184,8 +184,8 @@ func main() {
 		BackoffMaxRetries: BackoffMaxRetries,
 	}
 
-	IAMProductRolesEndpoint := controller.IAMProductRolesEndpoint
-	IAMAPIKey := controller.IAMServiceID
+	IAMProductRolesEndpoint := "" // empty because AccountIAM operand must be created first to know where operand namespace is
+	IAMAPIKey := ""               // API key is empty to start because need to fetch from mcsp-im-integration-details secret
 
 	iamClient, err := account_iam.NewMCSPIAMClient(IAMProductRolesEndpoint, IAMAPIKey, retryHandler)
 	if err != nil {

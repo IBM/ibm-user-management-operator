@@ -18,17 +18,21 @@ package controller
 
 import (
 	"context"
+	goerrors "errors"
 	"net/http"
 	"os"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	logger "github.com/rs/zerolog/log" // TOODO: investigate if this is really necessary
+	logger "github.com/rs/zerolog/log" // TODO: investigate if this is really necessary
 
 	operatorv1alpha1 "github.com/IBM/ibm-user-management-operator/api/v1alpha1"
 	"github.com/IBM/ibm-user-management-operator/client/account_iam"
@@ -42,13 +46,74 @@ type RoleActionConfigReconciler struct {
 }
 
 const (
-	WatchNamespace          = "WATCH_NAMESPACE"
-	IAMServiceID            = "azI6ZGJlMzc3Y2MtODBiNy00N2E0LTk5MGMtYTA0ZDQ0ODA1MDRhOlh1clZCbVZScTNDQm9VYXM3TmRCN1BRTHdzWFJXTFBqbTh6MFJxTzF4UEk9"
-	IAMServiceEndpoint      = "https://account-iam.cpfs.svc.cluster.local:9445/api/2.0/accounts/global_account/apikeys/token" // TODO: need to figure out if URL or just end point
-	IAMProductRolesEndpoint = "https://account-iam.cpfs.svc.cluster.local:9445/api/2.0/products"
+	WatchNamespace = "WATCH_NAMESPACE"
 )
 
-var log = logf.Log.WithName("controller_roleactionconfig")
+var (
+	log                     = logf.Log.WithName("controller_roleactionconfig")
+	IAMServiceEndpoint      = ""
+	IAMProductRolesEndpoint = ""
+)
+
+func (r *RoleActionConfigReconciler) PreReq(instance *operatorv1alpha1.RoleActionConfig) error {
+	if _, ok := r.APIClient.(*account_iam.MCSPIAMClient); !ok {
+		err := goerrors.New("the MCSPIAMClient type does not implement IAMClient") // this should never happen unless code was modified incorrectly
+		return err
+	}
+
+	mcspApiClient := r.APIClient.(*account_iam.MCSPIAMClient)
+
+	namespace := ""
+
+	accountIAMs := &operatorv1alpha1.AccountIAMList{}
+	selector := labels.SelectorFromSet(labels.Set{
+		"operator.ibm.com/opreq-control": "true",
+	})
+	if err := r.Client.List(context.TODO(), accountIAMs, &client.ListOptions{
+		LabelSelector: selector,
+	}); err != nil {
+		return err
+	}
+	if len(accountIAMs.Items) == 0 {
+		return goerrors.New("no account-iam exists yet, waiting")
+	}
+
+	namespace = accountIAMs.Items[0].Namespace
+	if len(accountIAMs.Items) > 1 { // if installing with ODLM, this should not happen
+		// if more than one account-iam svc, then rely on label in RoleActionConfig CR
+		if _, ok := instance.Labels["operator.ibm.com/account-iam-ns"]; !ok {
+			return goerrors.New("found more than one AccountIAM CR and missing 'operator.ibm.com/operator.ibm.com/account-iam-ns' label")
+		}
+		namespace = instance.Labels["operator.ibm.com/operator.ibm.com/account-iam-ns"]
+	}
+
+	if IAMServiceEndpoint == "" {
+		// fetch namespace of account-iam service
+		IAMServiceEndpoint = "https://account-iam." + namespace + ".svc.cluster.local:9445/api/2.0/accounts/global_account/apikeys/token"
+	}
+
+	if IAMProductRolesEndpoint == "" {
+		// fetch namespace of account-iam service
+		IAMProductRolesEndpoint = "https://account-iam." + namespace + ".svc.cluster.local:9445/api/2.0/products"
+		mcspApiClient.BaseURL = IAMProductRolesEndpoint
+	}
+
+	if mcspApiClient.ApiKey == "" {
+		// fetch from mcsp-im-integration-details secret
+		secret := &corev1.Secret{}
+		if err := r.Client.Get(context.TODO(), types.NamespacedName{
+			Name:      "mcsp-im-integration-details",
+			Namespace: namespace,
+		}, secret); err != nil {
+			return err
+		}
+		if _, ok := secret.Data["API_KEY"]; !ok {
+			return goerrors.New("secret mcsp-im-integration-details missing API_KEY")
+		}
+		mcspApiClient.ApiKey = string(secret.Data["API_KEY"])
+	}
+	return nil
+}
 
 // +kubebuilder:rbac:groups=operator.ibm.com,namespace="placeholder",resources=roleactionconfigs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=operator.ibm.com,namespace="placeholder",resources=roleactionconfigs/status,verbs=get;update;patch
@@ -84,6 +149,10 @@ func (r *RoleActionConfigReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			return ctrl.Result{}, nil
 		}
 		// Error reading the object - requeue the request.
+		return ctrl.Result{}, err
+	}
+
+	if err := r.PreReq(instance); err != nil {
 		return ctrl.Result{}, err
 	}
 
