@@ -239,9 +239,30 @@ func (r *AccountIAMReconciler) reconcilePhases(ctx context.Context, reconcileCtx
 	return nil
 }
 
+// initializeReconcileContext initializes the reconcile context with basic data
+func (r *AccountIAMReconciler) initializeReconcileContext(ctx context.Context, reconcileCtx *ReconcileContext) error {
+	// Initialize Redis CR data
+	reconcileCtx.RedisCRData = RedisCRParams{
+		RedisCRSize:    3,
+		RedisCRVersion: "1.2.8",
+	}
+
+	return nil
+}
+
+// reconcilePrerequisites handles all prerequisite setup
+func (r *AccountIAMReconciler) reconcilePrerequisites(ctx context.Context, reconcileCtx *ReconcileContext) error {
+	return r.verifyPrereq(ctx, reconcileCtx)
+}
+
 // reconcileOperandResourcesPhase wraps reconcileOperandResources for phase execution
 func (r *AccountIAMReconciler) reconcileOperandResourcesPhase(ctx context.Context, reconcileCtx *ReconcileContext) error {
 	return r.reconcileOperandResources(ctx, reconcileCtx)
+}
+
+// reconcileIMConfiguration handles IM configuration
+func (r *AccountIAMReconciler) reconcileIMConfiguration(ctx context.Context, reconcileCtx *ReconcileContext) error {
+	return r.configIM(ctx, reconcileCtx)
 }
 
 // reconcileUIPhase wraps reconcileUI for phase execution
@@ -264,27 +285,6 @@ func (r *AccountIAMReconciler) updateStatus(ctx context.Context, instance *opera
 	if updateErr != nil {
 		klog.Errorf("All attempts to update status failed: %v", updateErr)
 	}
-}
-
-// initializeReconcileContext initializes the reconcile context with basic data
-func (r *AccountIAMReconciler) initializeReconcileContext(ctx context.Context, reconcileCtx *ReconcileContext) error {
-	// Initialize Redis CR data
-	reconcileCtx.RedisCRData = RedisCRParams{
-		RedisCRSize:    3,
-		RedisCRVersion: "1.2.8",
-	}
-
-	return nil
-}
-
-// reconcilePrerequisites handles all prerequisite setup
-func (r *AccountIAMReconciler) reconcilePrerequisites(ctx context.Context, reconcileCtx *ReconcileContext) error {
-	return r.verifyPrereq(ctx, reconcileCtx)
-}
-
-// reconcileIMConfiguration handles IM configuration
-func (r *AccountIAMReconciler) reconcileIMConfiguration(ctx context.Context, reconcileCtx *ReconcileContext) error {
-	return r.configIM(ctx, reconcileCtx)
 }
 
 // -------------- verifyPrereq helper functions --------------
