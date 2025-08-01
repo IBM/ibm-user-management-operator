@@ -268,14 +268,6 @@ func (r *AccountIAMReconciler) updateStatus(ctx context.Context, instance *opera
 
 // initializeReconcileContext initializes the reconcile context with basic data
 func (r *AccountIAMReconciler) initializeReconcileContext(ctx context.Context, reconcileCtx *ReconcileContext) error {
-	// Get cp-console route
-	klog.Info("Getting cp-console route")
-	host, err := utils.GetHost(ctx, r.Client, "cp-console", reconcileCtx.Instance.Namespace)
-	if err != nil {
-		return err
-	}
-	reconcileCtx.Host = host
-
 	// Initialize Redis CR data
 	reconcileCtx.RedisCRData = RedisCRParams{
 		RedisCRSize:    3,
@@ -316,7 +308,7 @@ func (r *AccountIAMReconciler) verifyPrereq(ctx context.Context, reconcileCtx *R
 	}
 
 	// Create Redis CR and wait for it to be ready
-	if err := r.createRedisCR(ctx, instance); err != nil {
+	if err := r.createRedisCR(ctx, reconcileCtx); err != nil {
 		klog.Errorf("Failed to create Redis CR: %v", err)
 		return err
 	}
@@ -332,6 +324,14 @@ func (r *AccountIAMReconciler) verifyPrereq(ctx context.Context, reconcileCtx *R
 	if err != nil {
 		return err
 	}
+
+	// Get cp-console route after operand request is ready
+	klog.Info("Getting cp-console route")
+	host, err := utils.GetHost(ctx, r.Client, "cp-console", instance.Namespace)
+	if err != nil {
+		return err
+	}
+	reconcileCtx.Host = host
 
 	// Create bootstrap secret and populate context
 	klog.Info("Creating bootstrap secret")
@@ -426,7 +426,9 @@ func (r *AccountIAMReconciler) createOperandRequest(ctx context.Context, instanc
 	return nil
 }
 
-func (r *AccountIAMReconciler) createRedisCR(ctx context.Context, instance *operatorv1alpha1.AccountIAM) error {
+func (r *AccountIAMReconciler) createRedisCR(ctx context.Context, reconcileCtx *ReconcileContext) error {
+	instance := reconcileCtx.Instance
+
 	// Check if Redis CRD exists
 	if existRedis, err := utils.CheckCRD(r.Config, utils.Concat(resources.RedisAPIGroup, "/", resources.Version), resources.RedisKind); err != nil {
 		return err
@@ -452,12 +454,8 @@ func (r *AccountIAMReconciler) createRedisCR(ctx context.Context, instance *oper
 		}()
 
 		klog.Infof("Redis CRD exists, creating Redis CR %s in namespace %s", resources.Rediscp, instance.Namespace)
-		redisCRData := RedisCRParams{
-			RedisCRSize:    3,
-			RedisCRVersion: "1.2.8",
-		}
 
-		err := r.injectData(ctx, instance, []string{yamls.RedisCRTemplate}, redisCRData)
+		err := r.injectData(ctx, instance, []string{yamls.RedisCRTemplate}, reconcileCtx.RedisCRData)
 		errChan <- err
 	}()
 
