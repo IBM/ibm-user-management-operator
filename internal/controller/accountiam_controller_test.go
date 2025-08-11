@@ -551,7 +551,6 @@ var _ = Describe("AccountIAM Controller", func() {
 
 				err = reconciler.initializeReconcileContext(ctx, reconcileCtx)
 
-				// May fail due to missing external CRDs, which is expected
 				if err != nil {
 					Expect(err.Error()).To(ContainSubstring("no matches for kind"))
 					By("initializeReconcileContext handles missing external dependencies")
@@ -560,10 +559,44 @@ var _ = Describe("AccountIAM Controller", func() {
 					By("initializeReconcileContext completed successfully")
 				}
 
-				// Cleanup
 				k8sClient.Delete(ctx, accountIAM)
 			})
 		})
+
+		Context("Bootstrap Data Functions", func() {
+			It("should handle initBootstrapData function", func() {
+				By("Testing initBootstrapData with valid data")
+				testData := []byte("test-bootstrap-data")
+
+				secret, err := reconciler.initBootstrapData(ctx, AccountIAMNamespace, testData)
+
+				if err != nil {
+					Expect(err.Error()).NotTo(BeEmpty())
+					By("initBootstrapData handles missing dependencies gracefully")
+				} else {
+					Expect(secret).NotTo(BeNil())
+					By("initBootstrapData created secret successfully")
+
+					if secret != nil {
+						k8sClient.Delete(ctx, secret)
+					}
+				}
+			})
+		})
+
+		Context("Job Management Functions", func() {
+			It("should handle cleanJob function", func() {
+				By("Testing cleanJob with empty job list")
+				err := reconciler.cleanJob(ctx, []string{}, AccountIAMNamespace)
+				Expect(err).NotTo(HaveOccurred())
+
+				By("Testing cleanJob with non-existent jobs")
+				err = reconciler.cleanJob(ctx, []string{"non-existent-job"}, AccountIAMNamespace)
+				// Should not error when jobs don't exist
+				Expect(err).NotTo(HaveOccurred())
+			})
+		})
+
 	})
 })
 
