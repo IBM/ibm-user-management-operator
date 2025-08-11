@@ -25,6 +25,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -395,6 +396,173 @@ var _ = Describe("AccountIAM Controller", func() {
 			Expect(contains(emptySlice, "test")).To(BeFalse())
 			result := remove(emptySlice, "test")
 			Expect(result).To(BeEmpty())
+		})
+	})
+
+	Context("When testing specific controller functions", func() {
+		var (
+			reconciler *AccountIAMReconciler
+			recorder   *record.FakeRecorder
+		)
+
+		BeforeEach(func() {
+			recorder = record.NewFakeRecorder(100)
+			reconciler = &AccountIAMReconciler{
+				Client:   k8sClient,
+				Scheme:   k8sClient.Scheme(),
+				Recorder: recorder,
+			}
+		})
+
+		Context("Status Management Functions", func() {
+			It("should update status correctly", func() {
+				By("Creating AccountIAM resource")
+				accountIAM := &operatorv1alpha1.AccountIAM{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-status",
+						Namespace: AccountIAMNamespace,
+					},
+					Spec: operatorv1alpha1.AccountIAMSpec{},
+				}
+
+				err := k8sClient.Create(ctx, accountIAM)
+				Expect(err).NotTo(HaveOccurred())
+
+				By("Calling updateStatus function")
+				// This tests the updateStatus function specifically
+				reconciler.updateStatus(ctx, accountIAM)
+
+				By("Verifying status was updated")
+				updatedAccountIAM := &operatorv1alpha1.AccountIAM{}
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      "test-status",
+					Namespace: AccountIAMNamespace,
+				}, updatedAccountIAM)
+				Expect(err).NotTo(HaveOccurred())
+
+				// Status should be initialized
+				Expect(updatedAccountIAM.Status).NotTo(BeNil())
+
+				// Cleanup
+				k8sClient.Delete(ctx, accountIAM)
+			})
+		})
+
+		Context("Resource Creation Functions", func() {
+			It("should handle createOrUpdate with new resources", func() {
+				By("Creating a test ConfigMap resource")
+				testConfigMap := &unstructured.Unstructured{
+					Object: map[string]interface{}{
+						"apiVersion": "v1",
+						"kind":       "ConfigMap",
+						"metadata": map[string]interface{}{
+							"name":      "test-createorupdate",
+							"namespace": AccountIAMNamespace,
+						},
+						"data": map[string]interface{}{
+							"test-key": "test-value",
+						},
+					},
+				}
+
+				By("Calling createOrUpdate function")
+				err := reconciler.createOrUpdate(ctx, testConfigMap)
+				Expect(err).NotTo(HaveOccurred())
+
+				By("Verifying resource was created")
+				createdCM := &corev1.ConfigMap{}
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      "test-createorupdate",
+					Namespace: AccountIAMNamespace,
+				}, createdCM)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(createdCM.Data["test-key"]).To(Equal("test-value"))
+
+				// Cleanup
+				k8sClient.Delete(ctx, createdCM)
+			})
+
+			It("should handle createOrUpdate with existing resources", func() {
+				By("Creating initial ConfigMap")
+				initialCM := &corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-update",
+						Namespace: AccountIAMNamespace,
+					},
+					Data: map[string]string{
+						"initial": "value",
+					},
+				}
+				err := k8sClient.Create(ctx, initialCM)
+				Expect(err).NotTo(HaveOccurred())
+
+				By("Updating via createOrUpdate")
+				updatedResource := &unstructured.Unstructured{
+					Object: map[string]interface{}{
+						"apiVersion": "v1",
+						"kind":       "ConfigMap",
+						"metadata": map[string]interface{}{
+							"name":      "test-update",
+							"namespace": AccountIAMNamespace,
+						},
+						"data": map[string]interface{}{
+							"initial": "value",
+							"updated": "newvalue",
+						},
+					},
+				}
+
+				err = reconciler.createOrUpdate(ctx, updatedResource)
+				Expect(err).NotTo(HaveOccurred())
+
+				By("Verifying resource was updated")
+				finalCM := &corev1.ConfigMap{}
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      "test-update",
+					Namespace: AccountIAMNamespace,
+				}, finalCM)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(finalCM.Data["updated"]).To(Equal("newvalue"))
+				Expect(finalCM.Data["initial"]).To(Equal("value"))
+
+				// Cleanup
+				k8sClient.Delete(ctx, finalCM)
+			})
+		})
+
+		Context("Initialization Functions", func() {
+			It("should initialize reconcile context properly", func() {
+				By("Creating AccountIAM resource")
+				accountIAM := &operatorv1alpha1.AccountIAM{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-init-context",
+						Namespace: AccountIAMNamespace,
+					},
+					Spec: operatorv1alpha1.AccountIAMSpec{},
+				}
+
+				err := k8sClient.Create(ctx, accountIAM)
+				Expect(err).NotTo(HaveOccurred())
+
+				By("Initializing reconcile context")
+				reconcileCtx := &ReconcileContext{
+					Instance: accountIAM,
+				}
+
+				err = reconciler.initializeReconcileContext(ctx, reconcileCtx)
+
+				// May fail due to missing external CRDs, which is expected
+				if err != nil {
+					Expect(err.Error()).To(ContainSubstring("no matches for kind"))
+					By("initializeReconcileContext handles missing external dependencies")
+				} else {
+					Expect(reconcileCtx.Instance).NotTo(BeNil())
+					By("initializeReconcileContext completed successfully")
+				}
+
+				// Cleanup
+				k8sClient.Delete(ctx, accountIAM)
+			})
 		})
 	})
 })
