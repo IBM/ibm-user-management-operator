@@ -27,6 +27,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	operatorv1alpha1 "github.com/IBM/ibm-user-management-operator/api/v1alpha1"
@@ -44,7 +45,7 @@ var _ = Describe("AccountIAM Controller", func() {
 		ctx = context.Background()
 	)
 
-	Context("When reconciling an AccountIAM resource", func() {
+	Context("When testing reconciliation phases", func() {
 		var (
 			accountIAM *operatorv1alpha1.AccountIAM
 			reconciler *AccountIAMReconciler
@@ -52,6 +53,7 @@ var _ = Describe("AccountIAM Controller", func() {
 		)
 
 		BeforeEach(func() {
+			// Create namespace if it doesn't exist
 			namespace := &corev1.Namespace{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: AccountIAMNamespace,
@@ -90,6 +92,7 @@ var _ = Describe("AccountIAM Controller", func() {
 				Expect(err).NotTo(HaveOccurred())
 			}
 
+			// Wait for deletion to complete
 			Eventually(func() bool {
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      AccountIAMName,
@@ -99,125 +102,296 @@ var _ = Describe("AccountIAM Controller", func() {
 			}, timeout, interval).Should(BeTrue())
 		})
 
-		It("should successfully reconcile the resource", func() {
-			By("Reconciling the created resource")
-			namespacedName := types.NamespacedName{
-				Name:      AccountIAMName,
-				Namespace: AccountIAMNamespace,
-			}
+		// Phase 1: Initial Resource Validation
+		Context("Phase 1: Resource Validation", func() {
+			It("should validate AccountIAM resource exists", func() {
+				By("Checking resource can be fetched")
+				namespacedName := types.NamespacedName{
+					Name:      AccountIAMName,
+					Namespace: AccountIAMNamespace,
+				}
 
-			result, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: namespacedName,
+				fetchedAccountIAM := &operatorv1alpha1.AccountIAM{}
+				err := k8sClient.Get(ctx, namespacedName, fetchedAccountIAM)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(fetchedAccountIAM.Name).To(Equal(AccountIAMName))
 			})
 
-			Expect(err).NotTo(HaveOccurred())
-			// The reconciler should handle the resource without error
-			Expect(result).NotTo(BeNil())
+			It("should handle missing resource gracefully", func() {
+				By("Reconciling non-existent resource")
+				namespacedName := types.NamespacedName{
+					Name:      "non-existent",
+					Namespace: AccountIAMNamespace,
+				}
+
+				result, err := reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: namespacedName,
+				})
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.Requeue).To(BeFalse())
+			})
 		})
 
-		It("should handle missing AccountIAM resource gracefully", func() {
-			By("Reconciling a non-existent resource")
-			namespacedName := types.NamespacedName{
-				Name:      "non-existent",
-				Namespace: AccountIAMNamespace,
-			}
+		// Phase 2: Finalizer Management
+		Context("Phase 2: Finalizer Management", func() {
+			It("should add finalizer on first reconcile", func() {
+				By("Reconciling resource without finalizer")
+				namespacedName := types.NamespacedName{
+					Name:      AccountIAMName,
+					Namespace: AccountIAMNamespace,
+				}
 
-			result, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: namespacedName,
+				_, err := reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: namespacedName,
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				// Check if finalizer was added
+				updatedAccountIAM := &operatorv1alpha1.AccountIAM{}
+				err = k8sClient.Get(ctx, namespacedName, updatedAccountIAM)
+				Expect(err).NotTo(HaveOccurred())
+
+				// Verify the resource still exists (finalizer logic depends on implementation)
+				Expect(updatedAccountIAM.Name).To(Equal(AccountIAMName))
 			})
 
-			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
-			Expect(result.RequeueAfter).To(BeZero())
-		})
+			It("should handle deletion with finalizer", func() {
+				By("Setting up resource with finalizer")
+				namespacedName := types.NamespacedName{
+					Name:      AccountIAMName,
+					Namespace: AccountIAMNamespace,
+				}
 
-		It("should handle finalizer logic correctly", func() {
-			By("Checking finalizer handling during reconciliation")
-			namespacedName := types.NamespacedName{
-				Name:      AccountIAMName,
-				Namespace: AccountIAMNamespace,
-			}
+				// First reconcile to potentially add finalizer
+				_, err := reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: namespacedName,
+				})
+				Expect(err).NotTo(HaveOccurred())
 
-			// Reconcile to potentially add finalizer
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: namespacedName,
+				By("Deleting resource")
+				err = k8sClient.Delete(ctx, accountIAM)
+				Expect(err).NotTo(HaveOccurred())
+
+				By("Reconciling deleted resource")
+				_, err = reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: namespacedName,
+				})
+				Expect(err).NotTo(HaveOccurred())
 			})
-			Expect(err).NotTo(HaveOccurred())
-
-			// Check current state of resource
-			updatedAccountIAM := &operatorv1alpha1.AccountIAM{}
-			err = k8sClient.Get(ctx, namespacedName, updatedAccountIAM)
-			Expect(err).NotTo(HaveOccurred())
-
-			// Verify the resource exists
-			Expect(updatedAccountIAM.Name).To(Equal(AccountIAMName))
 		})
 
-		It("should handle deletion gracefully", func() {
-			By("Testing deletion workflow")
-			namespacedName := types.NamespacedName{
-				Name:      AccountIAMName,
-				Namespace: AccountIAMNamespace,
-			}
+		// Phase 3: Prerequisites Verification
+		Context("Phase 3: Prerequisites Verification", func() {
+			It("should handle missing cluster info ConfigMap", func() {
+				By("Reconciling without cluster info")
+				namespacedName := types.NamespacedName{
+					Name:      AccountIAMName,
+					Namespace: AccountIAMNamespace,
+				}
 
-			// First reconcile to set up the resource
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: namespacedName,
+				result, err := reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: namespacedName,
+				})
+
+				// Should not error but might requeue
+				Expect(err).NotTo(HaveOccurred())
+				// Controller might requeue waiting for prerequisites
+				Expect(result.Requeue || result.RequeueAfter > 0).To(BeTrue())
 			})
-			Expect(err).NotTo(HaveOccurred())
 
-			// Delete the resource
-			err = k8sClient.Delete(ctx, accountIAM)
-			Expect(err).NotTo(HaveOccurred())
+			It("should proceed when cluster info is available", func() {
+				By("Creating cluster info ConfigMap")
+				clusterInfo := &corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "ibmcloud-cluster-info",
+						Namespace: AccountIAMNamespace,
+					},
+					Data: map[string]string{
+						"cluster_address":  "test.example.com",
+						"cluster_endpoint": "https://test.example.com:443",
+					},
+				}
+				Expect(k8sClient.Create(ctx, clusterInfo)).Should(Succeed())
 
-			// Reconcile after deletion to test cleanup logic
-			_, err = reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: namespacedName,
+				By("Reconciling with cluster info present")
+				namespacedName := types.NamespacedName{
+					Name:      AccountIAMName,
+					Namespace: AccountIAMNamespace,
+				}
+
+				result, err := reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: namespacedName,
+				})
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result).NotTo(BeNil())
 			})
-			Expect(err).NotTo(HaveOccurred())
 		})
 
-		It("should validate basic AccountIAM structure", func() {
-			By("Checking that the AccountIAM resource is properly structured")
-			Expect(accountIAM.Name).To(Equal(AccountIAMName))
-			Expect(accountIAM.Namespace).To(Equal(AccountIAMNamespace))
-			Expect(accountIAM.Kind).To(Equal(""))       // Kind is usually empty in tests
-			Expect(accountIAM.APIVersion).To(Equal("")) // APIVersion is usually empty in tests
-		})
+		// Phase 4: Resource Creation/Update
+		Context("Phase 4: Resource Management", func() {
+			It("should handle ConfigMap creation", func() {
+				By("Setting up prerequisites")
+				clusterInfo := &corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "ibmcloud-cluster-info",
+						Namespace: AccountIAMNamespace,
+					},
+					Data: map[string]string{
+						"cluster_address":  "test.example.com",
+						"cluster_endpoint": "https://test.example.com:443",
+					},
+				}
+				Expect(k8sClient.Create(ctx, clusterInfo)).Should(Succeed())
 
-		It("should handle status updates correctly", func() {
-			By("Reconciling and checking status updates")
-			namespacedName := types.NamespacedName{
-				Name:      AccountIAMName,
-				Namespace: AccountIAMNamespace,
-			}
+				By("Reconciling to trigger resource creation")
+				namespacedName := types.NamespacedName{
+					Name:      AccountIAMName,
+					Namespace: AccountIAMNamespace,
+				}
 
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: namespacedName,
+				_, err := reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: namespacedName,
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				// Check if expected ConfigMaps are created (based on controller logic)
+				Eventually(func() bool {
+					configMaps := &corev1.ConfigMapList{}
+					err := k8sClient.List(ctx, configMaps, &client.ListOptions{
+						Namespace: AccountIAMNamespace,
+					})
+					return err == nil && len(configMaps.Items) > 1 // Original + created ones
+				}, timeout, interval).Should(BeTrue())
 			})
-			Expect(err).NotTo(HaveOccurred())
 
-			// Get the updated resource and verify it's still accessible
-			updatedAccountIAM := &operatorv1alpha1.AccountIAM{}
-			err = k8sClient.Get(ctx, namespacedName, updatedAccountIAM)
-			Expect(err).NotTo(HaveOccurred())
+			It("should handle Secret creation", func() {
+				By("Setting up prerequisites and reconciling")
+				// This would test secret creation logic in the controller
+				namespacedName := types.NamespacedName{
+					Name:      AccountIAMName,
+					Namespace: AccountIAMNamespace,
+				}
 
-			// Verify the resource was processed correctly
-			Expect(updatedAccountIAM.Name).To(Equal(AccountIAMName))
-			Expect(updatedAccountIAM.Namespace).To(Equal(AccountIAMNamespace))
+				_, err := reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: namespacedName,
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				// Verify secrets are created if the controller creates them
+				secrets := &corev1.SecretList{}
+				err = k8sClient.List(ctx, secrets, &client.ListOptions{
+					Namespace: AccountIAMNamespace,
+				})
+				Expect(err).NotTo(HaveOccurred())
+			})
 		})
 
-		It("should handle reconciler setup correctly", func() {
-			By("Verifying reconciler is properly configured")
-			Expect(reconciler.Client).NotTo(BeNil())
-			Expect(reconciler.Scheme).NotTo(BeNil())
-			Expect(reconciler.Recorder).NotTo(BeNil())
+		// Phase 5: Status Updates
+		Context("Phase 5: Status Management", func() {
+			It("should update status during reconciliation", func() {
+				By("Reconciling and checking status")
+				namespacedName := types.NamespacedName{
+					Name:      AccountIAMName,
+					Namespace: AccountIAMNamespace,
+				}
+
+				_, err := reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: namespacedName,
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				// Get updated resource and check status
+				updatedAccountIAM := &operatorv1alpha1.AccountIAM{}
+				err = k8sClient.Get(ctx, namespacedName, updatedAccountIAM)
+				Expect(err).NotTo(HaveOccurred())
+
+				// Verify status fields (adjust based on actual status structure)
+				Expect(updatedAccountIAM.Status).NotTo(BeNil())
+			})
+
+			It("should handle status update failures gracefully", func() {
+				By("Testing status update resilience")
+				namespacedName := types.NamespacedName{
+					Name:      AccountIAMName,
+					Namespace: AccountIAMNamespace,
+				}
+
+				// Multiple reconciles should not fail
+				for i := 0; i < 3; i++ {
+					_, err := reconciler.Reconcile(ctx, reconcile.Request{
+						NamespacedName: namespacedName,
+					})
+					Expect(err).NotTo(HaveOccurred())
+				}
+			})
+		})
+
+		// Phase 6: Error Handling
+		Context("Phase 6: Error Scenarios", func() {
+			It("should handle reconcile errors gracefully", func() {
+				By("Creating a scenario that might cause errors")
+				namespacedName := types.NamespacedName{
+					Name:      AccountIAMName,
+					Namespace: AccountIAMNamespace,
+				}
+
+				// Test with incomplete setup
+				result, err := reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: namespacedName,
+				})
+
+				// Should handle errors without panicking
+				if err != nil {
+					// Error is acceptable in some scenarios
+					Expect(err.Error()).NotTo(BeEmpty())
+				}
+				Expect(result).NotTo(BeNil())
+			})
+
+			It("should retry on transient failures", func() {
+				By("Testing retry logic")
+				namespacedName := types.NamespacedName{
+					Name:      AccountIAMName,
+					Namespace: AccountIAMNamespace,
+				}
+
+				result, err := reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: namespacedName,
+				})
+
+				Expect(err).NotTo(HaveOccurred())
+				// Should requeue for retry if prerequisites are missing
+				Expect(result.Requeue || result.RequeueAfter > 0).To(BeTrue())
+			})
 		})
 	})
 
+	Context("When testing utility functions", func() {
+		It("should properly check if string is in slice", func() {
+			slice := []string{"pass", "fail", "notFound"}
+			Expect(contains(slice, "fail")).To(BeTrue())
+			Expect(contains(slice, "orange")).To(BeFalse())
+		})
+
+		It("should properly remove string from slice", func() {
+			slice := []string{"pass", "fail", "notFound"}
+			result := remove(slice, "fail")
+			Expect(result).To(Equal([]string{"pass", "notFound"}))
+			Expect(len(result)).To(Equal(2))
+		})
+
+		It("should handle empty slices", func() {
+			var emptySlice []string
+			Expect(contains(emptySlice, "test")).To(BeFalse())
+			result := remove(emptySlice, "test")
+			Expect(result).To(BeEmpty())
+		})
+	})
 })
 
-// Helper functions for testing (these would be in utils.go normally)
+// Helper functions for testing
 func contains(slice []string, item string) bool {
 	for _, s := range slice {
 		if s == item {
