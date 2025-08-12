@@ -18,6 +18,7 @@ package utils
 
 import (
 	"context"
+	"encoding/base64"
 	"os"
 	"testing"
 
@@ -123,6 +124,120 @@ var _ = Describe("Utils Functions", func() {
 			Expect(gvk.Group).To(Equal("test.group"))
 			Expect(gvk.Kind).To(Equal("TestKind"))
 			Expect(gvk.Version).To(Equal("v1"))
+		})
+	})
+
+	Context("String Utility Functions", func() {
+		It("should concatenate strings correctly", func() {
+			result := Concat("hello", "-", "world", "!")
+			Expect(result).To(Equal("hello-world!"))
+		})
+
+		It("should concatenate empty strings", func() {
+			result := Concat("", "", "")
+			Expect(result).To(Equal(""))
+		})
+
+		It("should concatenate single string", func() {
+			result := Concat("single")
+			Expect(result).To(Equal("single"))
+		})
+	})
+
+	Context("Random String Functions", func() {
+		It("should generate random strings of specified lengths", func() {
+			lengths := []int{8, 16, 32}
+			results, err := RandStrings(lengths...)
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(results).To(HaveLen(3))
+
+			for _, result := range results {
+				Expect(result).NotTo(BeEmpty())
+				// Verify it's base64 encoded (double encoded in this case)
+				_, err := base64.StdEncoding.DecodeString(string(result))
+				Expect(err).NotTo(HaveOccurred())
+			}
+		})
+
+		It("should handle zero lengths", func() {
+			results, err := RandStrings(0, 0)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(results).To(HaveLen(2))
+		})
+
+		It("should handle empty input", func() {
+			results, err := RandStrings()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(results).To(HaveLen(0))
+		})
+	})
+
+	Context("Data Combination Functions", func() {
+		type TestStruct1 struct {
+			Field1 string
+			Field2 int
+		}
+
+		type TestStruct2 struct {
+			Field3 bool
+			Field4 float64
+		}
+
+		It("should combine data from multiple structs", func() {
+			s1 := TestStruct1{Field1: "test", Field2: 42}
+			s2 := TestStruct2{Field3: true, Field4: 3.14}
+
+			result := CombineData(s1, s2)
+
+			Expect(result).To(HaveKey("Field1"))
+			Expect(result).To(HaveKey("Field2"))
+			Expect(result).To(HaveKey("Field3"))
+			Expect(result).To(HaveKey("Field4"))
+			Expect(result["Field1"]).To(Equal("test"))
+			Expect(result["Field2"]).To(Equal(42))
+			Expect(result["Field3"]).To(Equal(true))
+			Expect(result["Field4"]).To(Equal(3.14))
+		})
+
+		It("should handle pointer structs", func() {
+			s1 := &TestStruct1{Field1: "test", Field2: 42}
+			result := CombineData(s1)
+
+			Expect(result).To(HaveKey("Field1"))
+			Expect(result["Field1"]).To(Equal("test"))
+		})
+
+		It("should handle non-struct values gracefully", func() {
+			result := CombineData("not a struct", 123, []string{"slice"})
+			Expect(result).To(BeEmpty())
+		})
+	})
+
+	Context("Certificate Indentation Functions", func() {
+		It("should indent certificate correctly", func() {
+			cert := "-----BEGIN CERTIFICATE-----\nMIIC...\n-----END CERTIFICATE-----"
+			indented := IndentCert(cert, 4)
+
+			lines := []string{
+				"    -----BEGIN CERTIFICATE-----",
+				"    MIIC...",
+				"    -----END CERTIFICATE-----",
+			}
+			expected := lines[0] + "\n" + lines[1] + "\n" + lines[2]
+			Expect(indented).To(Equal(expected))
+		})
+
+		It("should handle zero indentation", func() {
+			cert := "test\ncert"
+			result := IndentCert(cert, 0)
+			Expect(result).To(Equal("test\ncert"))
+		})
+
+		It("should handle single line", func() {
+			cert := "single line"
+			result := IndentCert(cert, 2)
+			Expect(result).To(Equal("  single line"))
 		})
 	})
 })
