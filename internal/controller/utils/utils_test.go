@@ -21,6 +21,7 @@ import (
 	"encoding/base64"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/IBM/ibm-user-management-operator/internal/resources"
 	odlm "github.com/IBM/operand-deployment-lifecycle-manager/v4/api/v1alpha1"
@@ -882,6 +883,132 @@ var _ = Describe("Route Functions", func() {
 
 		It("should return error when route doesn't exist", func() {
 			_, err := GetHost(ctx, fakeClient, "nonexistent-route", testNamespace)
+			Expect(err).To(HaveOccurred())
+		})
+	})
+})
+
+var _ = Describe("Wait Functions", func() {
+	var (
+		testNamespace = "test-namespace"
+		fakeClient    client.Client
+		testTimeout   = 100 * time.Millisecond
+	)
+
+	BeforeEach(func() {
+		scheme := runtime.NewScheme()
+		corev1.AddToScheme(scheme)
+		batchv1.AddToScheme(scheme)
+		appsv1.AddToScheme(scheme)
+		odlm.AddToScheme(scheme)
+		fakeClient = fake.NewClientBuilder().WithScheme(scheme).Build()
+	})
+
+	Context("WaitForJob", func() {
+		It("should timeout when job doesn't exist", func() {
+			ctxWithTimeout, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+			defer cancel()
+
+			err := WaitForJob(ctxWithTimeout, fakeClient, testNamespace, "nonexistent-job")
+			Expect(err).To(HaveOccurred())
+		})
+	})
+
+	Context("WaitForOperatorReady", func() {
+		It("should return when OperandRequest is running", func() {
+			operandReq := &odlm.OperandRequest{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-operand",
+					Namespace: testNamespace,
+				},
+				Status: odlm.OperandRequestStatus{
+					Phase: resources.PhaseRunning,
+				},
+			}
+
+			Expect(fakeClient.Create(ctx, operandReq)).To(Succeed())
+
+			ctxWithTimeout, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+
+			err := WaitForOperatorReady(ctxWithTimeout, fakeClient, "test-operand", testNamespace)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("should timeout when OperandRequest is not ready", func() {
+			operandReq := &odlm.OperandRequest{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-operand",
+					Namespace: testNamespace,
+				},
+				Status: odlm.OperandRequestStatus{
+					Phase: "Pending",
+				},
+			}
+
+			Expect(fakeClient.Create(ctx, operandReq)).To(Succeed())
+
+			ctxWithTimeout, cancel := context.WithTimeout(ctx, testTimeout)
+			defer cancel()
+
+			err := WaitForOperatorReady(ctxWithTimeout, fakeClient, "test-operand", testNamespace)
+			Expect(err).To(HaveOccurred())
+		})
+	})
+
+	Context("WaitForDeploymentReady", func() {
+		It("should return when deployment is ready", func() {
+			replicas := int32(2)
+			deployment := &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-deployment",
+					Namespace: testNamespace,
+				},
+				Spec: appsv1.DeploymentSpec{
+					Replicas: &replicas,
+				},
+				Status: appsv1.DeploymentStatus{
+					ReadyReplicas:     replicas,
+					AvailableReplicas: replicas,
+					Conditions: []appsv1.DeploymentCondition{
+						{
+							Type:   appsv1.DeploymentAvailable,
+							Status: corev1.ConditionTrue,
+						},
+					},
+				},
+			}
+
+			Expect(fakeClient.Create(ctx, deployment)).To(Succeed())
+
+			ctxWithTimeout, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+
+			err := WaitForDeploymentReady(ctxWithTimeout, fakeClient, testNamespace, "test")
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("should timeout when deployment is not ready", func() {
+			replicas := int32(2)
+			deployment := &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-deployment",
+					Namespace: testNamespace,
+				},
+				Spec: appsv1.DeploymentSpec{
+					Replicas: &replicas,
+				},
+				Status: appsv1.DeploymentStatus{
+					ReadyReplicas: 1, // Less than desired
+				},
+			}
+
+			Expect(fakeClient.Create(ctx, deployment)).To(Succeed())
+
+			ctxWithTimeout, cancel := context.WithTimeout(ctx, testTimeout)
+			defer cancel()
+
+			err := WaitForDeploymentReady(ctxWithTimeout, fakeClient, testNamespace, "test")
 			Expect(err).To(HaveOccurred())
 		})
 	})
