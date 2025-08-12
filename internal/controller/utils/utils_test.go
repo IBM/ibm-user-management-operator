@@ -848,3 +848,41 @@ var _ = Describe("Secret Data Functions", func() {
 		})
 	})
 })
+
+var _ = Describe("Route Functions", func() {
+	var (
+		testNamespace = "test-namespace"
+		fakeClient    client.Client
+	)
+
+	BeforeEach(func() {
+		scheme := runtime.NewScheme()
+		routev1.AddToScheme(scheme)
+		fakeClient = fake.NewClientBuilder().WithScheme(scheme).Build()
+	})
+
+	Context("GetHost", func() {
+		It("should get route host correctly", func() {
+			route := &routev1.Route{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-route",
+					Namespace: testNamespace,
+				},
+				Spec: routev1.RouteSpec{
+					Host: "test.example.com",
+				},
+			}
+
+			Expect(fakeClient.Create(ctx, route)).To(Succeed())
+
+			host, err := GetHost(ctx, fakeClient, "test-route", testNamespace)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(host).To(Equal("test.example.com"))
+		})
+
+		It("should return error when route doesn't exist", func() {
+			_, err := GetHost(ctx, fakeClient, "nonexistent-route", testNamespace)
+			Expect(err).To(HaveOccurred())
+		})
+	})
+})
