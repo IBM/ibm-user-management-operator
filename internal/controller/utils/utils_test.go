@@ -33,7 +33,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -437,14 +436,7 @@ var _ = Describe("Resource Status Functions", func() {
 	)
 
 	BeforeEach(func() {
-		// Create a fake client for isolated testing
-		scheme := runtime.NewScheme()
-		corev1.AddToScheme(scheme)
-		batchv1.AddToScheme(scheme)
-		routev1.AddToScheme(scheme)
-		odlm.AddToScheme(scheme)
-
-		fakeClient = fake.NewClientBuilder().WithScheme(scheme).Build()
+		fakeClient = fake.NewClientBuilder().WithScheme(scheme.Scheme).Build()
 	})
 
 	Context("Redis Resource Status", func() {
@@ -796,9 +788,7 @@ var _ = Describe("Secret Data Functions", func() {
 	)
 
 	BeforeEach(func() {
-		scheme := runtime.NewScheme()
-		corev1.AddToScheme(scheme)
-		fakeClient = fake.NewClientBuilder().WithScheme(scheme).Build()
+		fakeClient = fake.NewClientBuilder().WithScheme(scheme.Scheme).Build()
 	})
 
 	Context("GetSecretData", func() {
@@ -857,9 +847,7 @@ var _ = Describe("Route Functions", func() {
 	)
 
 	BeforeEach(func() {
-		scheme := runtime.NewScheme()
-		routev1.AddToScheme(scheme)
-		fakeClient = fake.NewClientBuilder().WithScheme(scheme).Build()
+		fakeClient = fake.NewClientBuilder().WithScheme(scheme.Scheme).Build()
 	})
 
 	Context("GetHost", func() {
@@ -896,12 +884,7 @@ var _ = Describe("Wait Functions", func() {
 	)
 
 	BeforeEach(func() {
-		scheme := runtime.NewScheme()
-		corev1.AddToScheme(scheme)
-		batchv1.AddToScheme(scheme)
-		appsv1.AddToScheme(scheme)
-		odlm.AddToScheme(scheme)
-		fakeClient = fake.NewClientBuilder().WithScheme(scheme).Build()
+		fakeClient = fake.NewClientBuilder().WithScheme(scheme.Scheme).Build()
 	})
 
 	Context("WaitForJob", func() {
