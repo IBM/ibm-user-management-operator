@@ -30,10 +30,14 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 )
 
@@ -131,8 +135,8 @@ var _ = Describe("Utils Functions", func() {
 
 	Context("String Utility Functions", func() {
 		It("should concatenate strings correctly", func() {
-			result := Concat("hello", "-", "world", "!")
-			Expect(result).To(Equal("hello-world!"))
+			result := Concat("user", "-", "management", "!")
+			Expect(result).To(Equal("user-management!"))
 		})
 
 		It("should concatenate empty strings", func() {
@@ -141,8 +145,8 @@ var _ = Describe("Utils Functions", func() {
 		})
 
 		It("should concatenate single string", func() {
-			result := Concat("single")
-			Expect(result).To(Equal("single"))
+			result := Concat("UserManagement")
+			Expect(result).To(Equal("UserManagement"))
 		})
 	})
 
@@ -421,6 +425,118 @@ var _ = Describe("Utils Functions", func() {
 			result := MergeCR(defaultCR, changedCR)
 			// Should not panic and return something
 			Expect(result).NotTo(BeNil())
+		})
+	})
+})
+
+var _ = Describe("Resource Status Functions", func() {
+	var (
+		testNamespace = "test-namespace"
+		fakeClient    client.Client
+	)
+
+	BeforeEach(func() {
+		// Create a fake client for isolated testing
+		scheme := runtime.NewScheme()
+		corev1.AddToScheme(scheme)
+		batchv1.AddToScheme(scheme)
+		routev1.AddToScheme(scheme)
+		odlm.AddToScheme(scheme)
+
+		fakeClient = fake.NewClientBuilder().WithScheme(scheme).Build()
+	})
+
+	Context("Redis Resource Status", func() {
+		It("should return not found when Redis CR doesn't exist", func() {
+			status, ready := GetRedisResourceStatus(ctx, fakeClient, testNamespace)
+
+			Expect(ready).To(BeFalse())
+			Expect(status.Status).To(Equal(resources.StatusNotFound))
+			Expect(status.ObjectName).To(Equal(resources.Rediscp))
+			Expect(status.Kind).To(Equal(resources.RedisKind))
+		})
+
+		It("should return completed when Redis CR is ready", func() {
+			// Create a Redis CR with completed status
+			redisCR := &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"apiVersion": resources.RedisAPIGroup + "/" + resources.Version,
+					"kind":       resources.RedisKind,
+					"metadata": map[string]interface{}{
+						"name":      resources.Rediscp,
+						"namespace": testNamespace,
+					},
+					"status": map[string]interface{}{
+						resources.RedisStatus: resources.StatusCompleted,
+					},
+				},
+			}
+			redisCR.SetGroupVersionKind(schema.GroupVersionKind{
+				Group:   resources.RedisAPIGroup,
+				Version: resources.Version,
+				Kind:    resources.RedisKind,
+			})
+
+			Expect(fakeClient.Create(ctx, redisCR)).To(Succeed())
+
+			status, ready := GetRedisResourceStatus(ctx, fakeClient, testNamespace)
+			Expect(ready).To(BeTrue())
+			Expect(status.Status).To(Equal(resources.StatusCompleted))
+		})
+
+		It("should return not ready when Redis CR exists but not completed", func() {
+			redisCR := &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"apiVersion": resources.RedisAPIGroup + "/" + resources.Version,
+					"kind":       resources.RedisKind,
+					"metadata": map[string]interface{}{
+						"name":      resources.Rediscp,
+						"namespace": testNamespace,
+					},
+					"status": map[string]interface{}{
+						resources.RedisStatus: "Pending",
+					},
+				},
+			}
+			redisCR.SetGroupVersionKind(schema.GroupVersionKind{
+				Group:   resources.RedisAPIGroup,
+				Version: resources.Version,
+				Kind:    resources.RedisKind,
+			})
+
+			Expect(fakeClient.Create(ctx, redisCR)).To(Succeed())
+
+			status, ready := GetRedisResourceStatus(ctx, fakeClient, testNamespace)
+			Expect(ready).To(BeFalse())
+			Expect(status.Status).To(Equal(resources.StatusNotReady))
+		})
+	})
+
+	Context("OperandRequest Status", func() {
+		It("should return not found when OperandRequest doesn't exist", func() {
+			status, ready := GetOperandRequestStatus(ctx, fakeClient, testNamespace)
+
+			Expect(ready).To(BeFalse())
+			Expect(status.Status).To(Equal(resources.StatusNotFound))
+			Expect(status.ObjectName).To(Equal(resources.UserMgmtOpreq))
+		})
+
+		It("should return running when OperandRequest is running", func() {
+			operandReq := &odlm.OperandRequest{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resources.UserMgmtOpreq,
+					Namespace: testNamespace,
+				},
+				Status: odlm.OperandRequestStatus{
+					Phase: resources.PhaseRunning,
+				},
+			}
+
+			Expect(fakeClient.Create(ctx, operandReq)).To(Succeed())
+
+			status, ready := GetOperandRequestStatus(ctx, fakeClient, testNamespace)
+			Expect(ready).To(BeTrue())
+			Expect(status.Status).To(Equal(resources.PhaseRunning))
 		})
 	})
 })
