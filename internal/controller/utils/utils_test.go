@@ -457,7 +457,6 @@ var _ = Describe("Resource Status Functions", func() {
 		})
 
 		It("should return completed when Redis CR is ready", func() {
-			// Create a Redis CR with completed status
 			redisCR := &unstructured.Unstructured{
 				Object: map[string]interface{}{
 					"apiVersion": resources.RedisAPIGroup + "/" + resources.Version,
@@ -785,6 +784,67 @@ var _ = Describe("Resource Status Functions", func() {
 			status, ready := GetRouteStatus(ctx, fakeClient, "test-route", testNamespace)
 			Expect(ready).To(BeFalse())
 			Expect(status.Status).To(Equal(resources.StatusNotReady))
+		})
+	})
+})
+
+var _ = Describe("Secret Data Functions", func() {
+	var (
+		testNamespace = "test-namespace"
+		fakeClient    client.Client
+	)
+
+	BeforeEach(func() {
+		scheme := runtime.NewScheme()
+		corev1.AddToScheme(scheme)
+		fakeClient = fake.NewClientBuilder().WithScheme(scheme).Build()
+	})
+
+	Context("GetSecretData", func() {
+		It("should retrieve secret data correctly", func() {
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-secret",
+					Namespace: testNamespace,
+				},
+				Data: map[string][]byte{
+					"username": []byte("testuser"),
+					"password": []byte("testpass"),
+				},
+			}
+
+			Expect(fakeClient.Create(ctx, secret)).To(Succeed())
+
+			username, err := GetSecretData(ctx, fakeClient, "test-secret", testNamespace, "username")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(username).To(Equal("testuser"))
+
+			password, err := GetSecretData(ctx, fakeClient, "test-secret", testNamespace, "password")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(password).To(Equal("testpass"))
+		})
+
+		It("should return error when secret doesn't exist", func() {
+			_, err := GetSecretData(ctx, fakeClient, "nonexistent-secret", testNamespace, "key")
+			Expect(err).To(HaveOccurred())
+		})
+
+		It("should return error when key doesn't exist in secret", func() {
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-secret",
+					Namespace: testNamespace,
+				},
+				Data: map[string][]byte{
+					"existing-key": []byte("value"),
+				},
+			}
+
+			Expect(fakeClient.Create(ctx, secret)).To(Succeed())
+
+			_, err := GetSecretData(ctx, fakeClient, "test-secret", testNamespace, "nonexistent-key")
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("key nonexistent-key not found"))
 		})
 	})
 })
