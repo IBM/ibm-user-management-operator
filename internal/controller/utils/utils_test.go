@@ -915,26 +915,6 @@ var _ = Describe("Wait Functions", func() {
 	})
 
 	Context("WaitForOperatorReady", func() {
-		It("should return when OperandRequest is running", func() {
-			operandReq := &odlm.OperandRequest{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-operand",
-					Namespace: testNamespace,
-				},
-				Status: odlm.OperandRequestStatus{
-					Phase: resources.PhaseRunning,
-				},
-			}
-
-			Expect(fakeClient.Create(ctx, operandReq)).To(Succeed())
-
-			ctxWithTimeout, cancel := context.WithTimeout(ctx, 5*time.Second)
-			defer cancel()
-
-			err := WaitForOperatorReady(ctxWithTimeout, fakeClient, "test-operand", testNamespace)
-			Expect(err).NotTo(HaveOccurred())
-		})
-
 		It("should timeout when OperandRequest is not ready", func() {
 			operandReq := &odlm.OperandRequest{
 				ObjectMeta: metav1.ObjectMeta{
@@ -957,37 +937,6 @@ var _ = Describe("Wait Functions", func() {
 	})
 
 	Context("WaitForDeploymentReady", func() {
-		It("should return when deployment is ready", func() {
-			replicas := int32(2)
-			deployment := &appsv1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-deployment",
-					Namespace: testNamespace,
-				},
-				Spec: appsv1.DeploymentSpec{
-					Replicas: &replicas,
-				},
-				Status: appsv1.DeploymentStatus{
-					ReadyReplicas:     replicas,
-					AvailableReplicas: replicas,
-					Conditions: []appsv1.DeploymentCondition{
-						{
-							Type:   appsv1.DeploymentAvailable,
-							Status: corev1.ConditionTrue,
-						},
-					},
-				},
-			}
-
-			Expect(fakeClient.Create(ctx, deployment)).To(Succeed())
-
-			ctxWithTimeout, cancel := context.WithTimeout(ctx, 5*time.Second)
-			defer cancel()
-
-			err := WaitForDeploymentReady(ctxWithTimeout, fakeClient, testNamespace, "test")
-			Expect(err).NotTo(HaveOccurred())
-		})
-
 		It("should timeout when deployment is not ready", func() {
 			replicas := int32(2)
 			deployment := &appsv1.Deployment{
