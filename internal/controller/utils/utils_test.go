@@ -18,6 +18,7 @@ package utils
 
 import (
 	"context"
+	"os"
 	"testing"
 
 	odlm "github.com/IBM/operand-deployment-lifecycle-manager/v4/api/v1alpha1"
@@ -75,4 +76,53 @@ var _ = AfterSuite(func() {
 	By("tearing down the test environment")
 	err := testEnv.Stop()
 	Expect(err).NotTo(HaveOccurred())
+})
+
+var _ = Describe("Utils Functions", func() {
+
+	Context("Environment Functions", func() {
+		It("should get operator namespace from environment", func() {
+			os.Setenv("OPERATOR_NAMESPACE", "test-operator-ns")
+			defer os.Unsetenv("OPERATOR_NAMESPACE")
+
+			ns := GetOperatorNamespace()
+			Expect(ns).To(Equal("test-operator-ns"))
+		})
+
+		It("should return empty string when OPERATOR_NAMESPACE is not set", func() {
+			os.Unsetenv("OPERATOR_NAMESPACE")
+			ns := GetOperatorNamespace()
+			Expect(ns).To(Equal(""))
+		})
+
+		It("should get watch namespace from environment", func() {
+			// Test with WATCH_NAMESPACE set
+			os.Setenv("WATCH_NAMESPACE", "test-watch-ns")
+			defer os.Unsetenv("WATCH_NAMESPACE")
+
+			ns := GetWatchNamespace()
+			Expect(ns).To(Equal("test-watch-ns"))
+		})
+
+		It("should fallback to operator namespace when WATCH_NAMESPACE is not set", func() {
+			os.Unsetenv("WATCH_NAMESPACE")
+			os.Setenv("OPERATOR_NAMESPACE", "test-operator-ns")
+			defer os.Unsetenv("OPERATOR_NAMESPACE")
+
+			ns := GetWatchNamespace()
+			Expect(ns).To(Equal("test-operator-ns"))
+		})
+	})
+
+	Context("Unstructured Functions", func() {
+		It("should create unstructured object with correct GVK", func() {
+			u := NewUnstructured("test.group", "TestKind", "v1")
+			Expect(u).NotTo(BeNil())
+
+			gvk := u.GetObjectKind().GroupVersionKind()
+			Expect(gvk.Group).To(Equal("test.group"))
+			Expect(gvk.Kind).To(Equal("TestKind"))
+			Expect(gvk.Version).To(Equal("v1"))
+		})
+	})
 })
