@@ -22,6 +22,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/IBM/ibm-user-management-operator/internal/resources"
 	odlm "github.com/IBM/operand-deployment-lifecycle-manager/v4/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -29,6 +30,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -238,6 +240,187 @@ var _ = Describe("Utils Functions", func() {
 			cert := "single line"
 			result := IndentCert(cert, 2)
 			Expect(result).To(Equal("  single line"))
+		})
+	})
+
+	Context("Redis Info Functions", func() {
+		It("should parse Redis URL correctly", func() {
+			url := "redis://localhost:6380/0"
+			host, port, err := GetRedisInfo(url)
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(host).To(Equal("localhost"))
+			Expect(port).To(Equal("6380"))
+		})
+
+		It("should use default port when not specified", func() {
+			url := "redis://localhost/0"
+			host, port, err := GetRedisInfo(url)
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(host).To(Equal("localhost"))
+			Expect(port).To(Equal("6379"))
+		})
+
+		It("should handle invalid URL", func() {
+			url := "://invalid"
+			_, _, err := GetRedisInfo(url)
+			Expect(err).To(HaveOccurred())
+		})
+	})
+
+	Context("Hash Calculation Functions", func() {
+		It("should calculate hashes for resources", func() {
+			template := &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"kind": "Test",
+					"spec": map[string]interface{}{
+						"field": "value",
+					},
+				},
+			}
+
+			cluster := &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"kind": "Test",
+					"metadata": map[string]interface{}{
+						"annotations": map[string]interface{}{
+							resources.HashedData: "existing-hash",
+						},
+					},
+				},
+			}
+
+			clusterHash, templateHash, err := CalculateHashes(cluster, template)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(clusterHash).To(Equal("existing-hash"))
+			Expect(templateHash).NotTo(BeEmpty())
+		})
+
+		It("should handle nil cluster resource", func() {
+			template := &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"kind": "Test",
+					"spec": map[string]interface{}{
+						"field": "value",
+					},
+				},
+			}
+
+			clusterHash, templateHash, err := CalculateHashes(nil, template)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(clusterHash).To(BeEmpty())
+			Expect(templateHash).NotTo(BeEmpty())
+		})
+	})
+
+	Context("Hash Annotation Functions", func() {
+		It("should set hash annotation correctly", func() {
+			obj := &unstructured.Unstructured{}
+			hash := "test-hash-123"
+
+			SetHashAnnotation(obj, hash)
+
+			annotations := obj.GetAnnotations()
+			Expect(annotations).NotTo(BeNil())
+			Expect(annotations[resources.HashedData]).To(Equal(hash))
+		})
+
+		It("should update existing annotations", func() {
+			obj := &unstructured.Unstructured{}
+			obj.SetAnnotations(map[string]string{
+				"existing": "annotation",
+			})
+
+			hash := "new-hash"
+			SetHashAnnotation(obj, hash)
+
+			annotations := obj.GetAnnotations()
+			Expect(annotations["existing"]).To(Equal("annotation"))
+			Expect(annotations[resources.HashedData]).To(Equal(hash))
+		})
+	})
+
+	Context("Resource Merging Functions", func() {
+		It("should merge resources correctly", func() {
+			cluster := &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"kind": "Test",
+					"spec": map[string]interface{}{
+						"field1": "cluster-value",
+						"field2": "cluster-only",
+					},
+				},
+			}
+
+			template := &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"kind": "Test",
+					"spec": map[string]interface{}{
+						"field1": "template-value",
+						"field3": "template-only",
+					},
+				},
+			}
+
+			merged, err := MergeResources(cluster, template)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(merged).NotTo(BeNil())
+		})
+
+		It("should handle marshal errors gracefully", func() {
+			// Create an object that will cause marshal errors
+			cluster := &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"invalid": make(chan int), // channels cannot be marshaled
+				},
+			}
+
+			template := &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"kind": "Test",
+				},
+			}
+
+			_, err := MergeResources(cluster, template)
+			Expect(err).To(HaveOccurred())
+		})
+	})
+
+	Context("CR Merging Functions", func() {
+		It("should merge CRs correctly", func() {
+			defaultCR := []byte(`{"spec": {"field1": "default", "field2": "default-only"}}`)
+			changedCR := []byte(`{"spec": {"field1": "changed", "field3": "changed-only"}}`)
+
+			result := MergeCR(defaultCR, changedCR)
+			Expect(result).NotTo(BeNil())
+			Expect(result).To(HaveKey("spec"))
+		})
+
+		It("should handle empty CRs", func() {
+			result := MergeCR([]byte{}, []byte{})
+			Expect(result).NotTo(BeNil())
+			Expect(result).To(BeEmpty())
+		})
+
+		It("should handle only default CR", func() {
+			defaultCR := []byte(`{"spec": {"field": "value"}}`)
+			result := MergeCR(defaultCR, []byte{})
+			Expect(result).To(HaveKey("spec"))
+		})
+
+		It("should handle only changed CR", func() {
+			changedCR := []byte(`{"spec": {"field": "value"}}`)
+			result := MergeCR([]byte{}, changedCR)
+			Expect(result).To(HaveKey("spec"))
+		})
+
+		It("should handle invalid JSON gracefully", func() {
+			defaultCR := []byte(`invalid json`)
+			changedCR := []byte(`{"spec": {"field": "value"}}`)
+			result := MergeCR(defaultCR, changedCR)
+			// Should not panic and return something
+			Expect(result).NotTo(BeNil())
 		})
 	})
 })
