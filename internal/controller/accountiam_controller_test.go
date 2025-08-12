@@ -32,6 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	operatorv1alpha1 "github.com/IBM/ibm-user-management-operator/api/v1alpha1"
+	"github.com/IBM/ibm-user-management-operator/internal/controller/testutils"
 )
 
 var _ = Describe("AccountIAM Controller", func() {
@@ -175,7 +176,7 @@ var _ = Describe("AccountIAM Controller", func() {
 					NamespacedName: namespacedName,
 				})
 
-				// What we're actually testing here:
+				// What actually testing here:
 				// 1. Controller maintains state consistency
 				// 2. Error handling doesn't leak resources
 				// 3. Reconcile loop behaves predictably
@@ -380,21 +381,21 @@ var _ = Describe("AccountIAM Controller", func() {
 	Context("When testing utility functions", func() {
 		It("should properly check if string is in slice", func() {
 			slice := []string{"pass", "fail", "notFound"}
-			Expect(contains(slice, "fail")).To(BeTrue())
-			Expect(contains(slice, "orange")).To(BeFalse())
+			Expect(testutils.Contains(slice, "fail")).To(BeTrue())
+			Expect(testutils.Contains(slice, "failed")).To(BeFalse())
 		})
 
 		It("should properly remove string from slice", func() {
 			slice := []string{"pass", "fail", "notFound"}
-			result := remove(slice, "fail")
+			result := testutils.Remove(slice, "fail")
 			Expect(result).To(Equal([]string{"pass", "notFound"}))
 			Expect(len(result)).To(Equal(2))
 		})
 
 		It("should handle empty slices", func() {
 			var emptySlice []string
-			Expect(contains(emptySlice, "test")).To(BeFalse())
-			result := remove(emptySlice, "test")
+			Expect(testutils.Contains(emptySlice, "test")).To(BeFalse())
+			result := testutils.Remove(emptySlice, "test")
 			Expect(result).To(BeEmpty())
 		})
 	})
@@ -723,23 +724,3 @@ var _ = Describe("AccountIAM Controller", func() {
 		})
 	})
 })
-
-// Helper functions for testing
-func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
-	}
-	return false
-}
-
-func remove(slice []string, item string) []string {
-	var result []string
-	for _, s := range slice {
-		if s != item {
-			result = append(result, s)
-		}
-	}
-	return result
-}
