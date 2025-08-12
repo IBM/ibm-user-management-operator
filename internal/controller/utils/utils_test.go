@@ -539,4 +539,252 @@ var _ = Describe("Resource Status Functions", func() {
 			Expect(status.Status).To(Equal(resources.PhaseRunning))
 		})
 	})
+
+	Context("Job Status", func() {
+		It("should return not found when Job doesn't exist", func() {
+			status, ready := GetJobStatus(ctx, fakeClient, "test-job", testNamespace)
+
+			Expect(ready).To(BeFalse())
+			Expect(status.Status).To(Equal(resources.StatusNotFound))
+			Expect(status.ObjectName).To(Equal("test-job"))
+		})
+
+		It("should return completed when Job is successful", func() {
+			job := &batchv1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-job",
+					Namespace: testNamespace,
+				},
+				Status: batchv1.JobStatus{
+					Conditions: []batchv1.JobCondition{
+						{
+							Type:   batchv1.JobComplete,
+							Status: corev1.ConditionTrue,
+						},
+					},
+				},
+			}
+
+			Expect(fakeClient.Create(ctx, job)).To(Succeed())
+
+			status, ready := GetJobStatus(ctx, fakeClient, "test-job", testNamespace)
+			Expect(ready).To(BeTrue())
+			Expect(status.Status).To(Equal(resources.StatusCompleted))
+		})
+
+		It("should return failed when Job has failed", func() {
+			job := &batchv1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-job",
+					Namespace: testNamespace,
+				},
+				Status: batchv1.JobStatus{
+					Conditions: []batchv1.JobCondition{
+						{
+							Type:   batchv1.JobFailed,
+							Status: corev1.ConditionTrue,
+						},
+					},
+				},
+			}
+
+			Expect(fakeClient.Create(ctx, job)).To(Succeed())
+
+			status, ready := GetJobStatus(ctx, fakeClient, "test-job", testNamespace)
+			Expect(ready).To(BeFalse())
+			Expect(status.Status).To(Equal(resources.StatusFailed))
+		})
+
+		It("should return running when Job is in progress", func() {
+			job := &batchv1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-job",
+					Namespace: testNamespace,
+				},
+				Status: batchv1.JobStatus{
+					Conditions: []batchv1.JobCondition{}, // No completion conditions
+				},
+			}
+
+			Expect(fakeClient.Create(ctx, job)).To(Succeed())
+
+			status, ready := GetJobStatus(ctx, fakeClient, "test-job", testNamespace)
+			Expect(ready).To(BeFalse())
+			Expect(status.Status).To(Equal(resources.PhaseRunning))
+		})
+	})
+
+	Context("Service Status", func() {
+		It("should return not found when Service doesn't exist", func() {
+			status, ready := GetServiceStatus(ctx, fakeClient, "test-service", testNamespace)
+
+			Expect(ready).To(BeFalse())
+			Expect(status.Status).To(Equal(resources.StatusNotFound))
+		})
+
+		It("should return completed when Service has ClusterIP", func() {
+			service := &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-service",
+					Namespace: testNamespace,
+				},
+				Spec: corev1.ServiceSpec{
+					ClusterIP: "10.0.0.1",
+					Type:      "ClusterIP",
+				},
+			}
+
+			Expect(fakeClient.Create(ctx, service)).To(Succeed())
+
+			status, ready := GetServiceStatus(ctx, fakeClient, "test-service", testNamespace)
+			Expect(ready).To(BeTrue())
+			Expect(status.Status).To(Equal(resources.StatusCompleted))
+		})
+
+		It("should return completed for headless service", func() {
+			service := &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-service",
+					Namespace: testNamespace,
+				},
+				Spec: corev1.ServiceSpec{
+					ClusterIP: "None",
+					Type:      "ClusterIP",
+				},
+			}
+
+			Expect(fakeClient.Create(ctx, service)).To(Succeed())
+
+			status, ready := GetServiceStatus(ctx, fakeClient, "test-service", testNamespace)
+			Expect(ready).To(BeTrue())
+			Expect(status.Status).To(Equal(resources.StatusCompleted))
+		})
+
+		It("should return not ready when Service has no ClusterIP", func() {
+			service := &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-service",
+					Namespace: testNamespace,
+				},
+				Spec: corev1.ServiceSpec{
+					ClusterIP: "",
+					Type:      "ClusterIP",
+				},
+			}
+
+			Expect(fakeClient.Create(ctx, service)).To(Succeed())
+
+			status, ready := GetServiceStatus(ctx, fakeClient, "test-service", testNamespace)
+			Expect(ready).To(BeFalse())
+			Expect(status.Status).To(Equal(resources.StatusNotReady))
+		})
+	})
+
+	Context("Secret Status", func() {
+		It("should return not found when Secret doesn't exist", func() {
+			status, ready := GetSecretStatus(ctx, fakeClient, "test-secret", testNamespace)
+
+			Expect(ready).To(BeFalse())
+			Expect(status.Status).To(Equal(resources.StatusNotFound))
+		})
+
+		It("should return completed when Secret exists", func() {
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-secret",
+					Namespace: testNamespace,
+				},
+				Data: map[string][]byte{
+					"key": []byte("value"),
+				},
+			}
+
+			Expect(fakeClient.Create(ctx, secret)).To(Succeed())
+
+			status, ready := GetSecretStatus(ctx, fakeClient, "test-secret", testNamespace)
+			Expect(ready).To(BeTrue())
+			Expect(status.Status).To(Equal(resources.StatusCompleted))
+		})
+	})
+
+	Context("Route Status", func() {
+		It("should return not found when Route doesn't exist", func() {
+			status, ready := GetRouteStatus(ctx, fakeClient, "test-route", testNamespace)
+
+			Expect(ready).To(BeFalse())
+			Expect(status.Status).To(Equal(resources.StatusNotFound))
+		})
+
+		It("should return completed when Route is admitted", func() {
+			route := &routev1.Route{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-route",
+					Namespace: testNamespace,
+				},
+				Status: routev1.RouteStatus{
+					Ingress: []routev1.RouteIngress{
+						{
+							Conditions: []routev1.RouteIngressCondition{
+								{
+									Type:   routev1.RouteAdmitted,
+									Status: corev1.ConditionTrue,
+								},
+							},
+						},
+					},
+				},
+			}
+
+			Expect(fakeClient.Create(ctx, route)).To(Succeed())
+
+			status, ready := GetRouteStatus(ctx, fakeClient, "test-route", testNamespace)
+			Expect(ready).To(BeTrue())
+			Expect(status.Status).To(Equal(resources.StatusCompleted))
+		})
+
+		It("should return not ready when Route has no ingress", func() {
+			route := &routev1.Route{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-route",
+					Namespace: testNamespace,
+				},
+				Status: routev1.RouteStatus{
+					Ingress: []routev1.RouteIngress{}, // Empty ingress
+				},
+			}
+
+			Expect(fakeClient.Create(ctx, route)).To(Succeed())
+
+			status, ready := GetRouteStatus(ctx, fakeClient, "test-route", testNamespace)
+			Expect(ready).To(BeFalse())
+			Expect(status.Status).To(Equal(resources.StatusNotReady))
+		})
+
+		It("should return not ready when Route is not admitted", func() {
+			route := &routev1.Route{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-route",
+					Namespace: testNamespace,
+				},
+				Status: routev1.RouteStatus{
+					Ingress: []routev1.RouteIngress{
+						{
+							Conditions: []routev1.RouteIngressCondition{
+								{
+									Type:   routev1.RouteAdmitted,
+									Status: corev1.ConditionFalse,
+								},
+							},
+						},
+					},
+				},
+			}
+
+			Expect(fakeClient.Create(ctx, route)).To(Succeed())
+
+			status, ready := GetRouteStatus(ctx, fakeClient, "test-route", testNamespace)
+			Expect(ready).To(BeFalse())
+			Expect(status.Status).To(Equal(resources.StatusNotReady))
+		})
+	})
 })
