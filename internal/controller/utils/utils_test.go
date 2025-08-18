@@ -457,6 +457,57 @@ var _ = Describe("Resource Status Functions", func() {
 			Expect(ready).To(BeFalse())
 			Expect(status.Status).To(Equal(resources.StatusNotReady))
 		})
+
+		It("should handle Redis CR with partial status", func() {
+			redisCR := &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"apiVersion": resources.RedisAPIGroup + "/" + resources.Version,
+					"kind":       resources.RedisKind,
+					"metadata": map[string]interface{}{
+						"name":      resources.Rediscp,
+						"namespace": testNamespace,
+					},
+					"status": map[string]interface{}{
+						"phase": "Initializing",
+					},
+				},
+			}
+			redisCR.SetGroupVersionKind(schema.GroupVersionKind{
+				Group:   resources.RedisAPIGroup,
+				Version: resources.Version,
+				Kind:    resources.RedisKind,
+			})
+
+			Expect(fakeClient.Create(ctx, redisCR)).To(Succeed())
+
+			status, ready := GetRedisResourceStatus(ctx, fakeClient, testNamespace)
+			Expect(ready).To(BeFalse())
+			Expect(status.Status).To(Equal(resources.StatusError))
+		})
+
+		It("should handle Redis CR with empty status", func() {
+			redisCR := &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"apiVersion": resources.RedisAPIGroup + "/" + resources.Version,
+					"kind":       resources.RedisKind,
+					"metadata": map[string]interface{}{
+						"name":      resources.Rediscp,
+						"namespace": testNamespace,
+					},
+				},
+			}
+			redisCR.SetGroupVersionKind(schema.GroupVersionKind{
+				Group:   resources.RedisAPIGroup,
+				Version: resources.Version,
+				Kind:    resources.RedisKind,
+			})
+
+			Expect(fakeClient.Create(ctx, redisCR)).To(Succeed())
+
+			status, ready := GetRedisResourceStatus(ctx, fakeClient, testNamespace)
+			Expect(ready).To(BeFalse())
+			Expect(status.Status).To(Equal(resources.StatusError))
+		})
 	})
 
 	Context("OperandRequest Status", func() {
@@ -484,6 +535,38 @@ var _ = Describe("Resource Status Functions", func() {
 			status, ready := GetOperandRequestStatus(ctx, fakeClient, testNamespace)
 			Expect(ready).To(BeTrue())
 			Expect(status.Status).To(Equal(resources.PhaseRunning))
+		})
+
+		It("should handle OperandRequest with different phases", func() {
+			phases := []string{"Creating", "Running", "Succeeded", "Failed", "Pending"}
+
+			for _, phase := range phases {
+				// Delete any existing OperandRequest with the same name
+				existingReq := &odlm.OperandRequest{}
+				if err := fakeClient.Get(ctx, client.ObjectKey{Name: resources.UserMgmtOpreq, Namespace: testNamespace}, existingReq); err == nil {
+					Expect(fakeClient.Delete(ctx, existingReq)).To(Succeed())
+				}
+
+				operandReq := &odlm.OperandRequest{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      resources.UserMgmtOpreq, // Use the correct name that the function looks for
+						Namespace: testNamespace,
+					},
+					Status: odlm.OperandRequestStatus{
+						Phase: odlm.ClusterPhase(phase),
+					},
+				}
+
+				Expect(fakeClient.Create(ctx, operandReq)).To(Succeed())
+
+				status, ready := GetOperandRequestStatus(ctx, fakeClient, testNamespace)
+				Expect(status).NotTo(BeNil())
+				if phase == "Running" {
+					Expect(ready).To(BeTrue())
+				} else {
+					Expect(ready).To(BeFalse())
+				}
+			}
 		})
 	})
 
