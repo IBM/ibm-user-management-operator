@@ -1478,3 +1478,48 @@ func (b *BatchSecretRetrieval) GetSecretsData(ctx context.Context, namespace str
 
 	return results, nil
 }
+
+// ResourceBatchProcessor processes resources in batches for better performance
+type ResourceBatchProcessor struct {
+	reconciler *AccountIAMReconciler
+}
+
+// ProcessResourceBatch processes multiple resources concurrently with error aggregation
+func (p *ResourceBatchProcessor) ProcessResourceBatch(ctx context.Context, instance *operatorv1alpha1.AccountIAM, resources []*unstructured.Unstructured) error {
+	const maxConcurrency = 10
+	semaphore := make(chan struct{}, maxConcurrency)
+	var wg sync.WaitGroup
+	var errs []error
+	errsMux := sync.Mutex{}
+
+	for _, resource := range resources {
+		wg.Add(1)
+		go func(res *unstructured.Unstructured) {
+			defer wg.Done()
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
+
+			if err := controllerutil.SetControllerReference(instance, res, p.reconciler.Scheme); err != nil {
+				errsMux.Lock()
+				errs = append(errs, fmt.Errorf("failed to set controller reference for %s/%s: %w", res.GetKind(), res.GetName(), err))
+				errsMux.Unlock()
+				return
+			}
+
+			if err := p.reconciler.createOrUpdate(ctx, res); err != nil {
+				errsMux.Lock()
+				errs = append(errs, fmt.Errorf("failed to create/update %s/%s: %w", res.GetKind(), res.GetName(), err))
+				errsMux.Unlock()
+				return
+			}
+		}(resource)
+	}
+
+	wg.Wait()
+
+	if len(errs) > 0 {
+		return fmt.Errorf("batch processing failed: %v", errs)
+	}
+
+	return nil
+}
