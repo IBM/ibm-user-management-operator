@@ -24,7 +24,6 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-	"sync"
 	"text/template"
 	"time"
 
@@ -1132,37 +1131,33 @@ func (r *AccountIAMReconciler) initUIBootstrapData(ctx context.Context, reconcil
 	domain := strings.Join(parsing[1:], ".")
 	klog.Infof("domain: %s", domain)
 
-	// Get the API key
-	apiKey, err := utils.GetSecretData(ctx, r.Client, resources.IMAPISecret, instance.Namespace, resources.MCSPAPIKey)
+	// Use GetSecretsData to fetch all secrets concurrently
+	secrets := map[string]string{
+		"apiKey":        fmt.Sprintf("%s/%s", resources.IMAPISecret, resources.MCSPAPIKey),
+		"redisURLSSL":   fmt.Sprintf("%s/%s", resources.Rediscp, resources.RedisURLssl),
+		"redisPassword": fmt.Sprintf("%s/%s", resources.Rediscp, resources.RedisPassword),
+		"redisCACert":   fmt.Sprintf("%s/%s", resources.RedisCACert, resources.CAKey),
+	}
+
+	klog.Infof("Batch retrieving %d secrets for UI bootstrap data", len(secrets))
+	results, err := utils.GetSecretsData(ctx, r.Client, instance.Namespace, secrets)
 	if err != nil {
-		klog.Errorf("Failed to get secret %s in namespace %s: %v", resources.IMAPISecret, instance.Namespace, err)
+		klog.Errorf("Failed to batch retrieve secrets for UI bootstrap: %v", err)
 		return err
 	}
 
-	// Get the Redis URL SSL
-	redisURlssl, err := utils.GetSecretData(ctx, r.Client, resources.Rediscp, instance.Namespace, resources.RedisURLssl)
-	if err != nil {
-		klog.Errorf("Failed to get secret %s in namespace %s: %v", resources.Rediscp, instance.Namespace, err)
-		return err
-	}
+	// Extract individual values from batch results
+	apiKey := results["apiKey"]
+	redisURlssl := results["redisURLSSL"]
+	redisPassword := results["redisPassword"]
+	caCRT := results["redisCACert"]
+
 	redisHostname, redisPort, err := utils.GetRedisInfo(redisURlssl)
 	if err != nil {
-		fmt.Println("Error:", err)
+		klog.Errorf("Failed to parse Redis connection info: %v", err)
 		return err
 	}
 
-	redisPassword, err := utils.GetSecretData(ctx, r.Client, resources.Rediscp, instance.Namespace, resources.RedisPassword)
-	if err != nil {
-		klog.Errorf("Failed to get redis password from secret %s in namespace %s: %v", resources.Rediscp, instance.Namespace, err)
-		return err
-	}
-
-	// get Redis Certificate Authority
-	caCRT, err := utils.GetSecretData(ctx, r.Client, resources.RedisCACert, instance.Namespace, resources.CAKey)
-	if err != nil {
-		klog.Errorf("Failed to get ca.crt from secret %s in namespace %s", resources.CSCASecret, instance.Namespace)
-		return err
-	}
 	caCRT = base64.StdEncoding.EncodeToString([]byte(caCRT))
 
 	SessionSecret, err := utils.RandStrings(48)
@@ -1184,7 +1179,7 @@ func (r *AccountIAMReconciler) initUIBootstrapData(ctx context.Context, reconcil
 		InstanceManagementHostname: utils.Concat("account-iam-console-", instance.Namespace, ".", domain),
 		ClientID:                   string(decodedClientID),
 		ClientSecret:               string(decodedClientSecret),
-		IAMGlobalAPIKey:            string(apiKey),
+		IAMGlobalAPIKey:            apiKey,
 		RedisHost:                  redisHostname,
 		RedisPort:                  redisPort,
 		RedisPassword:              redisPassword,
@@ -1411,115 +1406,4 @@ func (r *AccountIAMReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&rbacv1.Role{}).
 		Owns(&rbacv1.RoleBinding{}).
 		Complete(r)
-}
-
-// BatchSecretRetrieval retrieves multiple secrets concurrently for better performance
-type BatchSecretRetrieval struct {
-	client client.Client
-}
-
-// GetSecretsData retrieves multiple secret data items concurrently
-func (b *BatchSecretRetrieval) GetSecretsData(ctx context.Context, namespace string, secrets map[string]string) (map[string]string, error) {
-	results := make(map[string]string)
-	resultsMux := sync.Mutex{}
-
-	type secretRequest struct {
-		secretName string
-		key        string
-		resultKey  string
-	}
-
-	var requests []secretRequest
-	for resultKey, secretKey := range secrets {
-		parts := strings.Split(secretKey, "/")
-		if len(parts) != 2 {
-			return nil, fmt.Errorf("invalid secret key format: %s", secretKey)
-		}
-		requests = append(requests, secretRequest{
-			secretName: parts[0],
-			key:        parts[1],
-			resultKey:  resultKey,
-		})
-	}
-
-	// Use worker pool for concurrent secret retrieval
-	const maxWorkers = 5
-	semaphore := make(chan struct{}, maxWorkers)
-	var wg sync.WaitGroup
-	var errs []error
-	errsMux := sync.Mutex{}
-
-	for _, req := range requests {
-		wg.Add(1)
-		go func(r secretRequest) {
-			defer wg.Done()
-			semaphore <- struct{}{}
-			defer func() { <-semaphore }()
-
-			data, err := utils.GetSecretData(ctx, b.client, r.secretName, namespace, r.key)
-			if err != nil {
-				errsMux.Lock()
-				errs = append(errs, fmt.Errorf("failed to get %s: %w", r.resultKey, err))
-				errsMux.Unlock()
-				return
-			}
-
-			resultsMux.Lock()
-			results[r.resultKey] = data
-			resultsMux.Unlock()
-		}(req)
-	}
-
-	wg.Wait()
-
-	if len(errs) > 0 {
-		return nil, fmt.Errorf("batch secret retrieval failed: %v", errs)
-	}
-
-	return results, nil
-}
-
-// ResourceBatchProcessor processes resources in batches for better performance
-type ResourceBatchProcessor struct {
-	reconciler *AccountIAMReconciler
-}
-
-// ProcessResourceBatch processes multiple resources concurrently with error aggregation
-func (p *ResourceBatchProcessor) ProcessResourceBatch(ctx context.Context, instance *operatorv1alpha1.AccountIAM, resources []*unstructured.Unstructured) error {
-	const maxConcurrency = 10
-	semaphore := make(chan struct{}, maxConcurrency)
-	var wg sync.WaitGroup
-	var errs []error
-	errsMux := sync.Mutex{}
-
-	for _, resource := range resources {
-		wg.Add(1)
-		go func(res *unstructured.Unstructured) {
-			defer wg.Done()
-			semaphore <- struct{}{}
-			defer func() { <-semaphore }()
-
-			if err := controllerutil.SetControllerReference(instance, res, p.reconciler.Scheme); err != nil {
-				errsMux.Lock()
-				errs = append(errs, fmt.Errorf("failed to set controller reference for %s/%s: %w", res.GetKind(), res.GetName(), err))
-				errsMux.Unlock()
-				return
-			}
-
-			if err := p.reconciler.createOrUpdate(ctx, res); err != nil {
-				errsMux.Lock()
-				errs = append(errs, fmt.Errorf("failed to create/update %s/%s: %w", res.GetKind(), res.GetName(), err))
-				errsMux.Unlock()
-				return
-			}
-		}(resource)
-	}
-
-	wg.Wait()
-
-	if len(errs) > 0 {
-		return fmt.Errorf("batch processing failed: %v", errs)
-	}
-
-	return nil
 }
