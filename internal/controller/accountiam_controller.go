@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync"
 	"text/template"
 	"time"
 
@@ -1410,4 +1411,70 @@ func (r *AccountIAMReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&rbacv1.Role{}).
 		Owns(&rbacv1.RoleBinding{}).
 		Complete(r)
+}
+
+// BatchSecretRetrieval retrieves multiple secrets concurrently for better performance
+type BatchSecretRetrieval struct {
+	client client.Client
+}
+
+// GetSecretsData retrieves multiple secret data items concurrently
+func (b *BatchSecretRetrieval) GetSecretsData(ctx context.Context, namespace string, secrets map[string]string) (map[string]string, error) {
+	results := make(map[string]string)
+	resultsMux := sync.Mutex{}
+
+	type secretRequest struct {
+		secretName string
+		key        string
+		resultKey  string
+	}
+
+	var requests []secretRequest
+	for resultKey, secretKey := range secrets {
+		parts := strings.Split(secretKey, "/")
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid secret key format: %s", secretKey)
+		}
+		requests = append(requests, secretRequest{
+			secretName: parts[0],
+			key:        parts[1],
+			resultKey:  resultKey,
+		})
+	}
+
+	// Use worker pool for concurrent secret retrieval
+	const maxWorkers = 5
+	semaphore := make(chan struct{}, maxWorkers)
+	var wg sync.WaitGroup
+	var errs []error
+	errsMux := sync.Mutex{}
+
+	for _, req := range requests {
+		wg.Add(1)
+		go func(r secretRequest) {
+			defer wg.Done()
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
+
+			data, err := utils.GetSecretData(ctx, b.client, r.secretName, namespace, r.key)
+			if err != nil {
+				errsMux.Lock()
+				errs = append(errs, fmt.Errorf("failed to get %s: %w", r.resultKey, err))
+				errsMux.Unlock()
+				return
+			}
+
+			resultsMux.Lock()
+			results[r.resultKey] = data
+			resultsMux.Unlock()
+		}(req)
+	}
+
+	wg.Wait()
+
+	if len(errs) > 0 {
+		return nil, fmt.Errorf("batch secret retrieval failed: %v", errs)
+	}
+
+	return results, nil
 }
