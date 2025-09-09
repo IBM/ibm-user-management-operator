@@ -155,10 +155,16 @@ run: manifests generate fmt vet ## Run a controller from your host.
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
+# if it is podman, use "podman build --format=docker --network=host" to ensure the image is compatible with docker
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build -t ${IMG} \
-	--build-arg VCS_REF=$(VCS_REF) --build-arg TARGETARCH=$(LOCAL_ARCH) .
+	ifeq ($(CONTAINER_TOOL), podman)
+		$(CONTAINER_TOOL) build --format=docker --network=host -t ${IMG} \
+			--build-arg VCS_REF=$(VCS_REF) --build-arg TARGETARCH=$(LOCAL_ARCH) .
+	else
+		$(CONTAINER_TOOL) build -t ${IMG} \
+			--build-arg VCS_REF=$(VCS_REF) --build-arg TARGETARCH=$(LOCAL_ARCH) .
+	endif
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.

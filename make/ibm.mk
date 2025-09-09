@@ -117,11 +117,11 @@ clean-before-commit:
 		./bundle/manifests/tmp.yaml > ./bundle/manifests/ibm-user-management-operator.clusterserviceversion.yaml
 	rm ./bundle/manifests/tmp.yaml
 
-get-cluster-credentials:
-	mkdir -p ~/.kube; cp -v /etc/kubeconfig/config ~/.kube; kubectl config use-context default; kubectl get nodes; echo going forward retiring google cloud
-
-config-docker: get-cluster-credentials
-	@scripts/makefile-config/artifactory_config_docker.sh
+# Configure docker for building images
+.PHONY: config-docker
+config-docker:
+	@echo "Configuring docker for building images"
+	$(CONTAINER_TOOL) login -u $(DOCKER_USER) -p $(DOCKER_PASS) $(DOCKER_REGISTRY); \
 
 # Test
 .PHONY: check

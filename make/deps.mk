@@ -10,7 +10,6 @@ YQ_VERSION ?= v4.44.1
 LOCAL_SCRIPTS_MAKEFILE_CHECK_DIR ?= $(LOCAL_SCRIPTS_DIR)/makefile-check
 LOCAL_SCRIPTS_MAKEFILE_INSTALL_DIR ?= $(LOCAL_SCRIPTS_DIR)/makefile-install
 
-
 ## Docker Buildx
 
 DOCKER_CLI_PLUGINS ?= ~/.docker/cli-plugins
@@ -51,4 +50,24 @@ ifeq (, $(shell which yq 2>/dev/null))
 else
 YQ = $(shell which yq)
 endif
+endif
+
+## Install go if not found
+.PHONY: go
+go:
+ifeq (,$(shell which go 2>/dev/null))
+	@{ \
+	echo "Installing golang" ;\
+	yum install -y golang ;\
+	}
+endif
+
+## install podman if not found
+.PHONY: podman
+podman:
+ifeq (,$(shell which podman 2>/dev/null))
+	@{ \
+	echo "Installing podman" ;\
+	yum install -y podman ;\
+	}
 endif

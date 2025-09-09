@@ -1,0 +1,147 @@
+version: '2'
+
+# PR Pipeline: pr-code-checks, code-pr-finish
+tasks:
+  pr-code-checks:
+    runtimeClassName: x86-xlarge
+    include:
+      - podman
+      - dind
+    steps:
+      - name: checks-setup
+        when: 'false'
+      - name: detect-secrets
+        when: 'true'
+        include:
+          - docker-socket
+      - name: unit-test
+        include:
+          - rootful-podman
+        image: icr.io/continuous-delivery/base-images/base:v1.21.0
+        displayName: Run unit tests
+        script: |
+          #!/usr/bin/env bash
+          if [[ "$PIPELINE_DEBUG" == 1 ]]; then
+              trap env EXIT
+              env
+              set -x
+          fi
+          cd "$WORKSPACE/$(load_repo app-repo path)"
+          export DOCKER_REGISTRY="$(get_env DOCKER_REGISTRY)"
+          export DOCKER_USER="$(get_env DOCKER_USER)"
+          export DOCKER_PASS="$(get_env DOCKER_PASS)"
+          export BUILD_LOCALLY=1
+          make go
+          make podman
+          make config-docker
+          make docker-build-push-prod
+      - name: compliance-checks
+        when: 'false'
+
+  pr-code-checks-ppc:
+    from: pr-code-checks
+    runtimeClassName: ppc64le-medium
+    include:
+      - podman
+    steps:
+      - name: checks-setup
+        when: 'false'
+      - name: detect-secrets
+        when: 'false'
+      - name: unit-test
+        include:
+          - rootful-podman
+        image: icr.io/continuous-delivery/base-images/base:v1.21.0
+        displayName: Build ppc acmesolver image
+        script: |
+          #!/usr/bin/env bash
+          if [[ "$PIPELINE_DEBUG" == 1 ]]; then
+              trap env EXIT
+              env
+              set -x
+          fi
+          cd "$WORKSPACE/$(load_repo app-repo path)"
+          export DOCKER_REGISTRY="$(get_env DOCKER_REGISTRY)"
+          export DOCKER_USER="$(get_env DOCKER_USER)"
+          export DOCKER_PASS="$(get_env DOCKER_PASS)"
+          export BUILD_LOCALLY=1
+          make go
+          make podman
+          make config-docker
+          make docker-build-push-prod
+      - name: compliance-checks
+        when: 'false'
+  
+  pr-code-checks-s390:
+    from: pr-code-checks
+    runtimeClassName: s390x-medium
+    include:
+      - podman
+    steps:
+      - name: checks-setup
+        when: 'false'
+      - name: detect-secrets
+        when: 'false'
+      - name: unit-test
+        include:
+          - rootful-podman
+        image: icr.io/continuous-delivery/base-images/base:v1.21.0
+        displayName: Build s390 acmesolver image
+        script: |
+          #!/usr/bin/env bash
+          if [[ "$PIPELINE_DEBUG" == 1 ]]; then
+              trap env EXIT
+              env
+              set -x
+          fi
+          cd "$WORKSPACE/$(load_repo app-repo path)"
+          export DOCKER_REGISTRY="$(get_env DOCKER_REGISTRY)"
+          export DOCKER_USER="$(get_env DOCKER_USER)"
+          export DOCKER_PASS="$(get_env DOCKER_PASS)"
+          export BUILD_LOCALLY=1
+          make go
+          make podman
+          make config-docker
+          make docker-build-push-prod
+      - name: compliance-checks
+        when: 'false'
+
+  pr-code-checks-multiarch:
+    from: pr-code-checks
+    runtimeClassName: x86-xlarge
+    runAfter: 
+      - pr-code-checks
+      - pr-code-checks-ppc
+      - pr-code-checks-s390
+    include:
+      - podman
+      - dind
+    steps:
+      - name: checks-setup
+        when: 'false'
+      - name: detect-secrets
+        when: 'true'
+        include:
+          - docker-socket
+      - name: unit-test
+        include:
+          - rootful-podman
+        image: icr.io/continuous-delivery/base-images/base:v1.21.0
+        displayName: Build multiarch acmesolver image
+        script: |
+          #!/usr/bin/env bash
+          if [[ "$PIPELINE_DEBUG" == 1 ]]; then
+              trap env EXIT
+              env
+              set -x
+          fi
+          cd "$WORKSPACE/$(load_repo app-repo path)"
+          export DOCKER_REGISTRY="$(get_env DOCKER_REGISTRY)"
+          export DOCKER_USER="$(get_env DOCKER_USER)"
+          export DOCKER_PASS="$(get_env DOCKER_PASS)"
+          export BUILD_LOCALLY=1
+          make podman
+          make config-docker
+          make multiarch-image
+      - name: compliance-checks
+        when: 'false'
