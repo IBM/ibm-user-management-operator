@@ -1420,6 +1420,48 @@ func (r *AccountIAMReconciler) updateManagedResourcesStatus(ctx context.Context,
 
 }
 
+// updatePhaseBasedOnResources updates the phase field based on the current state of managed resources
+func (r *AccountIAMReconciler) updatePhaseBasedOnResources(instance *operatorv1alpha1.AccountIAM) {
+	// If already in failed state, don't change it
+	if instance.Status.Phase == resources.PhaseFailed || instance.Status.Phase == resources.PhaseError {
+		return
+	}
+
+	// Check the overall service status to determine phase
+	serviceStatus := instance.Status.Service.Status
+
+	switch serviceStatus {
+	case resources.StatusReady, resources.PhaseRunning:
+		// All resources are ready and operational
+		if instance.Status.Phase != resources.PhaseReady {
+			instance.Status.Phase = resources.PhaseReady
+			klog.Infof("Setting phase to %s for AccountIAM %s/%s - all resources are ready",
+				instance.Status.Phase, instance.Namespace, instance.Name)
+		}
+	case resources.StatusNotReady, resources.StatusPending:
+		// Some resources are not ready yet, but reconciliation is progressing
+		if instance.Status.Phase != resources.PhasePending && instance.Status.Phase != resources.PhaseCreating {
+			instance.Status.Phase = resources.PhasePending
+			klog.Infof("Setting phase to %s for AccountIAM %s/%s - waiting for resources to be ready",
+				instance.Status.Phase, instance.Namespace, instance.Name)
+		}
+	case resources.StatusNotFound, resources.StatusError:
+		// Some resources have errors
+		if instance.Status.Phase != resources.PhaseError {
+			instance.Status.Phase = resources.PhaseError
+			klog.Infof("Setting phase to %s for AccountIAM %s/%s - some resources have errors",
+				instance.Status.Phase, instance.Namespace, instance.Name)
+		}
+	default:
+		// For any other status, keep the current phase or set to running if creating
+		if instance.Status.Phase == resources.PhaseCreating {
+			instance.Status.Phase = resources.PhaseRunning
+			klog.Infof("Setting phase to %s for AccountIAM %s/%s - reconciliation in progress",
+				instance.Status.Phase, instance.Namespace, instance.Name)
+		}
+	}
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *AccountIAMReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
