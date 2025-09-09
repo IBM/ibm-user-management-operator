@@ -1,6 +1,6 @@
 # Override default variable values from top level Makefile #
 
-VERSION ?= 1.0.0
+BUILD_VERSION ?= $(shell git describe --exact-match 2> /dev/null || git describe --match=$(git rev-parse --short=8 HEAD) --always --dirty --abbrev=8)
 CHANNELS ?= v1.0
 
 # IBM specific # 
@@ -12,7 +12,7 @@ else
 	IMG_REGISTRY ?= docker-na-public.artifactory.swg-devops.com/hyc-cloud-private-scratch-docker-local/ibmcom
 endif
 
-IMG ?= $(IMAGE_TAG_BASE):latest
+IMG ?= $(IMAGE_TAG_BASE):$(BUILD_VERSION)
 
 ## Image build variable
 VCS_REF ?= $(shell git rev-parse HEAD)
@@ -32,15 +32,15 @@ require-local-bin-dir:
 	
 
 ARCH := $(shell uname -m)
-LOCAL_ARCH := "amd64"
+LOCAL_ARCH := amd64
 ifeq ($(ARCH),x86_64)
-    LOCAL_ARCH="amd64"
+    LOCAL_ARCH := amd64
 else ifeq ($(ARCH),ppc64le)
-    LOCAL_ARCH="ppc64le"
+    LOCAL_ARCH := ppc64le
 else ifeq ($(ARCH),s390x)
-    LOCAL_ARCH="s390x"
+    LOCAL_ARCH := s390x
 else ifeq ($(ARCH),arm64)
-    LOCAL_ARCH="arm64"
+    LOCAL_ARCH := arm64
 else
     $(error "This system's ARCH $(ARCH) isn't recognized/supported")
 endif
@@ -79,7 +79,7 @@ configure-dev:
 	$(eval BUNDLE_IMG := $(DEV_BUNDLE_IMG))
 	$(eval CATALOG_IMG := $(DEV_CATALOG_IMG))
 	$(MAKE) bundle IMG=$(IMG)
-	
+
 ##@ Development Build
 .PHONY: docker-build-dev
 docker-build-dev: configure-dev docker-build 
@@ -100,13 +100,14 @@ catalog-build-dev: configure-dev catalog-build
 catalog-build-push-dev: configure-dev catalog-build-dev catalog-push
 
 ##@ Production Build
-.PHONY: docker-build-prod
-docker-build-prod: docker-build
 
 .PHONY: docker-build-push-prod
-docker-build-push-prod: docker-build-prod docker-push
-	$(CONTAINER_TOOL) tag $(IMG) $(IMAGE_TAG_BASE):$(VERSION)
-	$(MAKE) docker-push IMG=$(IMAGE_TAG_BASE):$(VERSION)
+docker-build-push-prod: docker-build
+	$(CONTAINER_TOOL) tag $(IMG) $(IMAGE_TAG_BASE)-$(LOCAL_ARCH):$(BUILD_VERSION)
+	$(MAKE) docker-push IMG=$(IMAGE_TAG_BASE)-$(LOCAL_ARCH):$(BUILD_VERSION)
+
+multiarch-image: $(CONFIG_DOCKER_TARGET)
+	@MAX_PULLING_RETRY=20 RETRY_INTERVAL=30 common/scripts/multiarch_image.sh $(IMAGE_TAG_BASE) $(BUILD_VERSION) $(VERSION)
 
 clean-before-commit:
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(ICR_IMAGE_TAG_BASE):latest
