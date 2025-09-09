@@ -211,6 +211,7 @@ func (r *AccountIAMReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	// Defer status update for managed resources and phase
 	defer func() {
 		r.updateManagedResourcesStatus(ctx, instance)
+		r.updatePhaseBasedOnResources(instance)
 		if !reflect.DeepEqual(originalStatus, instance.Status) {
 			r.updateStatus(ctx, instance)
 		}
@@ -1392,6 +1393,21 @@ func (r *AccountIAMReconciler) updateManagedResourcesStatus(ctx context.Context,
 		managedResources = append(managedResources, routeResource)
 		if !routeReady {
 			allResourcesReady = false
+		}
+	}
+
+	// Update service status based on resource readiness
+	if allResourcesReady {
+		accountIAMService.Status = resources.StatusReady
+	} else {
+		// Check current phase to determine appropriate status
+		switch instance.Status.Phase {
+		case resources.PhaseInitializing, resources.PhaseCreating:
+			accountIAMService.Status = resources.StatusPending
+		case resources.PhaseFailed, resources.PhaseError:
+			accountIAMService.Status = resources.StatusError
+		default:
+			accountIAMService.Status = resources.StatusNotReady
 		}
 	}
 
