@@ -202,7 +202,13 @@ func (r *AccountIAMReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	// Create a copy of the status to detect changes
 	originalStatus := instance.Status.DeepCopy()
 
-	// Defer status update for managed resources
+	// Initialize phase if not set
+	if instance.Status.Phase == "" {
+		instance.Status.Phase = resources.PhaseInitializing
+		klog.Infof("Setting initial phase to %s for AccountIAM %s/%s", instance.Status.Phase, instance.Namespace, instance.Name)
+	}
+
+	// Defer status update for managed resources and phase
 	defer func() {
 		r.updateManagedResourcesStatus(ctx, instance)
 		if !reflect.DeepEqual(originalStatus, instance.Status) {
@@ -213,8 +219,17 @@ func (r *AccountIAMReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	// Create reconcile context
 	reconcileCtx := &ReconcileContext{Instance: instance}
 
+	// Set phase to creating when starting reconciliation
+	if instance.Status.Phase == resources.PhaseInitializing {
+		instance.Status.Phase = resources.PhaseCreating
+		klog.Infof("Updating phase to %s for AccountIAM %s/%s", instance.Status.Phase, instance.Namespace, instance.Name)
+	}
+
 	// Execute reconciliation phases
 	if err := r.reconcilePhases(ctx, reconcileCtx); err != nil {
+		// Set phase to failed on error
+		instance.Status.Phase = resources.PhaseFailed
+		klog.Errorf("Reconciliation failed for AccountIAM %s/%s, setting phase to %s: %v", instance.Namespace, instance.Name, instance.Status.Phase, err)
 		return ctrl.Result{}, err
 	}
 
@@ -224,16 +239,28 @@ func (r *AccountIAMReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 // reconcilePhases executes all reconciliation phases in order
 func (r *AccountIAMReconciler) reconcilePhases(ctx context.Context, reconcileCtx *ReconcileContext) error {
-	phases := []func(context.Context, *ReconcileContext) error{
-		r.initializeReconcileContext,
-		r.reconcilePrerequisites,
-		r.reconcileOperandResourcesPhase,
-		r.reconcileIMConfiguration,
-		r.reconcileUIPhase,
+	phases := []struct {
+		name     string
+		function func(context.Context, *ReconcileContext) error
+		phase    string
+	}{
+		{"initializeReconcileContext", r.initializeReconcileContext, resources.PhaseCreating},
+		{"reconcilePrerequisites", r.reconcilePrerequisites, resources.PhasePending},
+		{"reconcileOperandResources", r.reconcileOperandResourcesPhase, resources.PhaseRunning},
+		{"reconcileIMConfiguration", r.reconcileIMConfiguration, resources.PhaseRunning},
+		{"reconcileUI", r.reconcileUIPhase, resources.PhaseRunning},
 	}
 
 	for _, phase := range phases {
-		if err := phase(ctx, reconcileCtx); err != nil {
+		// Update phase before executing each major phase
+		if reconcileCtx.Instance.Status.Phase != phase.phase {
+			reconcileCtx.Instance.Status.Phase = phase.phase
+			klog.Infof("Entering %s phase for AccountIAM %s/%s", phase.phase, reconcileCtx.Instance.Namespace, reconcileCtx.Instance.Name)
+		}
+
+		klog.Infof("Executing reconciliation phase: %s", phase.name)
+		if err := phase.function(ctx, reconcileCtx); err != nil {
+			klog.Errorf("Failed in %s phase: %v", phase.name, err)
 			return err
 		}
 	}
@@ -1290,7 +1317,7 @@ func (r *AccountIAMReconciler) updateManagedResourcesStatus(ctx context.Context,
 		Kind:       resources.UserMgmtCR,
 		APIVersion: resources.OperatorIBMApiVersion,
 		Namespace:  instance.Namespace,
-		Status:     resources.PhaseRunning, // Default to running, will update if any resource is not ready
+		Status:     resources.PhaseRunning, // Default to running, will update based on resource status
 	}
 
 	var managedResources []odlm.ResourceStatus
@@ -1366,10 +1393,6 @@ func (r *AccountIAMReconciler) updateManagedResourcesStatus(ctx context.Context,
 		if !routeReady {
 			allResourcesReady = false
 		}
-	}
-
-	if !allResourcesReady {
-		accountIAMService.Status = resources.StatusNotReady
 	}
 
 	accountIAMService.ManagedResources = managedResources
