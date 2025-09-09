@@ -65,8 +65,21 @@ const (
 	RedisCACert = "account-iam-ui-redis-ca-cert"
 	// RedisCert is the name of Redis service Certificate and secret
 	RedisSVCCert = "account-iam-ui-redis-svc-tls-cert"
+	// Phase constants for AccountIAM lifecycle
+	// PhaseInitializing is the phase when the AccountIAM is being initialized
+	PhaseInitializing = "Initializing"
+	// PhaseCreating is the phase when resources are being created
+	PhaseCreating = "Creating"
 	// PhaseRunning is the Running status
 	PhaseRunning = "Running"
+	// PhaseReady is the phase when all resources are ready and operational
+	PhaseReady = "Ready"
+	// PhaseFailed is the phase when reconciliation has failed
+	PhaseFailed = "Failed"
+	// PhaseError is the phase when an error occurred during reconciliation
+	PhaseError = "Error"
+	// PhasePending is the phase when waiting for dependencies
+	PhasePending = "Pending"
 	// StatusCompleted is the Completed status
 	StatusCompleted = "Completed"
 	// StatusReady is the Ready status

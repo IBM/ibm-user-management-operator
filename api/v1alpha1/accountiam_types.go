@@ -54,6 +54,9 @@ type AccountIAMSpec struct {
 
 // AccountIAMStatus defines the observed state of AccountIAM
 type AccountIAMStatus struct {
+	// Phase represents the current phase of the AccountIAM lifecycle
+	// +kubebuilder:validation:Enum=Initializing;Creating;Pending;Running;Ready;Failed;Error
+	Phase string `json:"phase,omitempty"`
 
 	// Import the operandstatus from odlm
 	Service odlm.OperandStatus `json:"service,omitempty"`
