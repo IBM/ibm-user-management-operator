@@ -21,6 +21,28 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// AccountIAM Phase constants (CR lifecycle phases)
+const (
+	PhaseInitializing = "Initializing"
+	PhaseCreating     = "Creating"
+	PhasePending      = "Pending"
+	PhaseRunning      = "Running"
+	PhaseReady        = "Ready"
+	PhaseFailed       = "Failed"
+	PhaseError        = "Error"
+)
+
+// Resource Status constants (individual resource states)
+const (
+	StatusReady     = "Ready"
+	StatusNotReady  = "NotReady"
+	StatusPending   = "Pending"
+	StatusCompleted = "Completed"
+	StatusFailed    = "Failed"
+	StatusError     = "Error"
+	StatusNotFound  = "NotFound"
+)
+
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 

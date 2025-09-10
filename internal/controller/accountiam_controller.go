@@ -204,7 +204,7 @@ func (r *AccountIAMReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	// Initialize phase if not set
 	if instance.Status.Phase == "" {
-		instance.Status.Phase = resources.PhaseInitializing
+		instance.Status.Phase = operatorv1alpha1.PhaseInitializing
 		klog.Infof("Setting initial phase to %s for AccountIAM %s/%s", instance.Status.Phase, instance.Namespace, instance.Name)
 	}
 
@@ -221,15 +221,15 @@ func (r *AccountIAMReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	reconcileCtx := &ReconcileContext{Instance: instance}
 
 	// Set phase to creating when starting reconciliation
-	if instance.Status.Phase == resources.PhaseInitializing {
-		instance.Status.Phase = resources.PhaseCreating
+	if instance.Status.Phase == operatorv1alpha1.PhaseInitializing {
+		instance.Status.Phase = operatorv1alpha1.PhaseCreating
 		klog.Infof("Updating phase to %s for AccountIAM %s/%s", instance.Status.Phase, instance.Namespace, instance.Name)
 	}
 
 	// Execute reconciliation phases
 	if err := r.reconcilePhases(ctx, reconcileCtx); err != nil {
 		// Set phase to failed on error
-		instance.Status.Phase = resources.PhaseFailed
+		instance.Status.Phase = operatorv1alpha1.PhaseFailed
 		klog.Errorf("Reconciliation failed for AccountIAM %s/%s, setting phase to %s: %v", instance.Namespace, instance.Name, instance.Status.Phase, err)
 		return ctrl.Result{}, err
 	}
@@ -245,11 +245,11 @@ func (r *AccountIAMReconciler) reconcilePhases(ctx context.Context, reconcileCtx
 		function func(context.Context, *ReconcileContext) error
 		phase    string
 	}{
-		{"initializeReconcileContext", r.initializeReconcileContext, resources.PhaseCreating},
-		{"reconcilePrerequisites", r.reconcilePrerequisites, resources.PhasePending},
-		{"reconcileOperandResources", r.reconcileOperandResourcesPhase, resources.PhaseRunning},
-		{"reconcileIMConfiguration", r.reconcileIMConfiguration, resources.PhaseRunning},
-		{"reconcileUI", r.reconcileUIPhase, resources.PhaseRunning},
+		{"initializeReconcileContext", r.initializeReconcileContext, operatorv1alpha1.PhaseCreating},
+		{"reconcilePrerequisites", r.reconcilePrerequisites, operatorv1alpha1.PhasePending},
+		{"reconcileOperandResources", r.reconcileOperandResourcesPhase, operatorv1alpha1.PhaseRunning},
+		{"reconcileIMConfiguration", r.reconcileIMConfiguration, operatorv1alpha1.PhaseRunning},
+		{"reconcileUI", r.reconcileUIPhase, operatorv1alpha1.PhaseRunning},
 	}
 
 	for _, phase := range phases {
@@ -496,7 +496,7 @@ func (r *AccountIAMReconciler) createRedisCR(ctx context.Context, reconcileCtx *
 	}
 
 	// Wait for Redis CR to be ready
-	return utils.WaitForRediscp(ctx, r.Client, instance.Namespace, resources.Rediscp, resources.RedisAPIGroup, resources.RedisKind, resources.Version, resources.StatusCompleted)
+	return utils.WaitForRediscp(ctx, r.Client, instance.Namespace, resources.Rediscp, resources.RedisAPIGroup, resources.RedisKind, resources.Version, operatorv1alpha1.StatusCompleted)
 }
 
 // InitBootstrapData initializes BootstrapData with default values
@@ -1318,7 +1318,7 @@ func (r *AccountIAMReconciler) updateManagedResourcesStatus(ctx context.Context,
 		Kind:       resources.UserMgmtCR,
 		APIVersion: resources.OperatorIBMApiVersion,
 		Namespace:  instance.Namespace,
-		Status:     resources.PhaseRunning, // Default to running, will update based on resource status
+		Status:     operatorv1alpha1.PhaseRunning, // Default to running, will update based on resource status
 	}
 
 	var managedResources []odlm.ResourceStatus
@@ -1398,16 +1398,16 @@ func (r *AccountIAMReconciler) updateManagedResourcesStatus(ctx context.Context,
 
 	// Update service status based on resource readiness
 	if allResourcesReady {
-		accountIAMService.Status = resources.StatusReady
+		accountIAMService.Status = operatorv1alpha1.StatusReady
 	} else {
 		// Check current phase to determine appropriate status
 		switch instance.Status.Phase {
-		case resources.PhaseInitializing, resources.PhaseCreating:
-			accountIAMService.Status = resources.StatusPending
-		case resources.PhaseFailed, resources.PhaseError:
-			accountIAMService.Status = resources.StatusError
+		case operatorv1alpha1.PhaseInitializing, operatorv1alpha1.PhaseCreating:
+			accountIAMService.Status = operatorv1alpha1.StatusPending
+		case operatorv1alpha1.PhaseFailed, operatorv1alpha1.PhaseError:
+			accountIAMService.Status = operatorv1alpha1.StatusError
 		default:
-			accountIAMService.Status = resources.StatusNotReady
+			accountIAMService.Status = operatorv1alpha1.StatusNotReady
 		}
 	}
 
@@ -1423,7 +1423,7 @@ func (r *AccountIAMReconciler) updateManagedResourcesStatus(ctx context.Context,
 // updatePhaseBasedOnResources updates the phase field based on the current state of managed resources
 func (r *AccountIAMReconciler) updatePhaseBasedOnResources(instance *operatorv1alpha1.AccountIAM) {
 	// If already in failed state, don't change it
-	if instance.Status.Phase == resources.PhaseFailed || instance.Status.Phase == resources.PhaseError {
+	if instance.Status.Phase == operatorv1alpha1.PhaseFailed || instance.Status.Phase == operatorv1alpha1.PhaseError {
 		return
 	}
 
@@ -1431,31 +1431,31 @@ func (r *AccountIAMReconciler) updatePhaseBasedOnResources(instance *operatorv1a
 	serviceStatus := instance.Status.Service.Status
 
 	switch serviceStatus {
-	case resources.StatusReady, resources.PhaseRunning:
+	case operatorv1alpha1.StatusReady, operatorv1alpha1.PhaseRunning:
 		// All resources are ready and operational
-		if instance.Status.Phase != resources.PhaseReady {
-			instance.Status.Phase = resources.PhaseReady
+		if instance.Status.Phase != operatorv1alpha1.PhaseReady {
+			instance.Status.Phase = operatorv1alpha1.PhaseReady
 			klog.Infof("Setting phase to %s for AccountIAM %s/%s - all resources are ready",
 				instance.Status.Phase, instance.Namespace, instance.Name)
 		}
-	case resources.StatusNotReady, resources.StatusPending:
+	case operatorv1alpha1.StatusNotReady, operatorv1alpha1.StatusPending:
 		// Some resources are not ready yet, but reconciliation is progressing
-		if instance.Status.Phase != resources.PhasePending && instance.Status.Phase != resources.PhaseCreating {
-			instance.Status.Phase = resources.PhasePending
+		if instance.Status.Phase != operatorv1alpha1.PhasePending && instance.Status.Phase != operatorv1alpha1.PhaseCreating {
+			instance.Status.Phase = operatorv1alpha1.PhasePending
 			klog.Infof("Setting phase to %s for AccountIAM %s/%s - waiting for resources to be ready",
 				instance.Status.Phase, instance.Namespace, instance.Name)
 		}
-	case resources.StatusNotFound, resources.StatusError:
+	case operatorv1alpha1.StatusNotFound, operatorv1alpha1.StatusError:
 		// Some resources have errors
-		if instance.Status.Phase != resources.PhaseError {
-			instance.Status.Phase = resources.PhaseError
+		if instance.Status.Phase != operatorv1alpha1.PhaseError {
+			instance.Status.Phase = operatorv1alpha1.PhaseError
 			klog.Infof("Setting phase to %s for AccountIAM %s/%s - some resources have errors",
 				instance.Status.Phase, instance.Namespace, instance.Name)
 		}
 	default:
 		// For any other status, keep the current phase or set to running if creating
-		if instance.Status.Phase == resources.PhaseCreating {
-			instance.Status.Phase = resources.PhaseRunning
+		if instance.Status.Phase == operatorv1alpha1.PhaseCreating {
+			instance.Status.Phase = operatorv1alpha1.PhaseRunning
 			klog.Infof("Setting phase to %s for AccountIAM %s/%s - reconciliation in progress",
 				instance.Status.Phase, instance.Namespace, instance.Name)
 		}

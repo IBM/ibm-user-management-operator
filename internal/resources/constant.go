@@ -115,22 +115,4 @@ const (
 	SkipAnnotation = "operator.ibm.com/ibm-user-management-operator.skip-update"
 	//HashedData is the key for checking the checksum of data section
 	HashedData string = "operator.ibm.com/ibm-user-management-operator.hashedData"
-
-	// AccountIAM Phase constants (CR lifecycle phases)
-	PhaseInitializing = "Initializing"
-	PhaseCreating     = "Creating"
-	PhasePending      = "Pending"
-	PhaseRunning      = "Running"
-	PhaseReady        = "Ready"
-	PhaseFailed       = "Failed"
-	PhaseError        = "Error"
-
-	// Resource Status constants (individual resource states)
-	StatusReady     = "Ready"
-	StatusNotReady  = "NotReady"
-	StatusPending   = "Pending"
-	StatusCompleted = "Completed"
-	StatusFailed    = "Failed"
-	StatusError     = "Error"
-	StatusNotFound  = "NotFound"
 )
