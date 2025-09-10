@@ -158,13 +158,13 @@ run: manifests generate fmt vet ## Run a controller from your host.
 # if it is podman, use "podman build --format=docker --network=host" to ensure the image is compatible with docker
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
-	ifeq ($(CONTAINER_TOOL), podman)
+	@if [ "$(CONTAINER_TOOL)" = "podman" ]; then \
 		$(CONTAINER_TOOL) build --format=docker --network=host -t ${IMG} \
-			--build-arg VCS_REF=$(VCS_REF) --build-arg TARGETARCH=$(LOCAL_ARCH) .
-	else
+			--build-arg VCS_REF=$(VCS_REF) --build-arg TARGETARCH=$(LOCAL_ARCH) .; \
+	else \
 		$(CONTAINER_TOOL) build -t ${IMG} \
-			--build-arg VCS_REF=$(VCS_REF) --build-arg TARGETARCH=$(LOCAL_ARCH) .
-	endif
+			--build-arg VCS_REF=$(VCS_REF) --build-arg TARGETARCH=$(LOCAL_ARCH) .; \
+	fi
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
