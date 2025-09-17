@@ -383,7 +383,12 @@ func (r *AccountIAMReconciler) verifyPrereq(ctx context.Context, reconcileCtx *R
 		return err
 	}
 
-	jobs := []string{resources.CreateDBJob, resources.DBMigrationJob, resources.IMConfigJob}
+	// Dynamic job names (first two contain base pattern)
+	jobs := []string{
+		replaceBaseName(resources.CreateDBJob, instance.Name),
+		replaceBaseName(resources.DBMigrationJob, instance.Name),
+		resources.IMConfigJob,
+	}
 	if err := r.cleanJob(ctx, jobs, instance.Namespace); err != nil {
 		klog.Errorf("Failed to clean up jobs: %v", err)
 		return err
@@ -457,6 +462,7 @@ func (r *AccountIAMReconciler) createOperandRequest(ctx context.Context, instanc
 
 func (r *AccountIAMReconciler) createRedisCR(ctx context.Context, reconcileCtx *ReconcileContext) error {
 	instance := reconcileCtx.Instance
+	base := instance.Name
 
 	// Check if Redis CRD exists
 	if existRedis, err := utils.CheckCRD(r.Config, utils.Concat(resources.RedisAPIGroup, "/", resources.Version), resources.RedisKind); err != nil {
@@ -495,8 +501,7 @@ func (r *AccountIAMReconciler) createRedisCR(ctx context.Context, reconcileCtx *
 		}
 	}
 
-	// Wait for Redis CR to be ready
-	return utils.WaitForRediscp(ctx, r.Client, instance.Namespace, resources.Rediscp, resources.RedisAPIGroup, resources.RedisKind, resources.Version, operatorv1alpha1.StatusCompleted)
+	return utils.WaitForRediscp(ctx, r.Client, instance.Namespace, replaceBaseName(resources.Rediscp, base), resources.RedisAPIGroup, resources.RedisKind, resources.Version, operatorv1alpha1.StatusCompleted)
 }
 
 // InitBootstrapData initializes BootstrapData with default values
@@ -590,8 +595,9 @@ func (r *AccountIAMReconciler) initMCSPData(reconcileCtx *ReconcileContext) erro
 	host := reconcileCtx.Host
 	ns := instance.Namespace
 
-	accountIAMHost := strings.Replace(host, "cp-console", "account-iam", 1)
-	accountIAMUIHost := strings.Replace(host, "cp-console", "account-iam-console", 1)
+	// Dynamic hostnames based on CR name
+	accountIAMHost := strings.Replace(host, "cp-console", instance.Name, 1)
+	accountIAMUIHost := strings.Replace(host, "cp-console", instance.Name+"-console", 1)
 
 	reconcileCtx.IntegrationData = IntegrationConfig{
 		AccountName:             "default-account",
@@ -745,6 +751,7 @@ func (r *AccountIAMReconciler) createDBBootstrapJob(ctx context.Context, instanc
 	klog.Infof("Applying DB Bootstrap Job")
 	object := &unstructured.Unstructured{}
 	resource := images.ReplaceInYAML(yamls.DB_BOOTSTRAP_JOB)
+	resource = replaceBaseName(resource, instance.Name)
 	manifest := []byte(resource)
 	if err := yaml.Unmarshal(manifest, object); err != nil {
 		return err
@@ -806,9 +813,12 @@ func (r *AccountIAMReconciler) createStaticManifests(ctx context.Context, instan
 // createAccountIAMResources creates Account IAM resources
 func (r *AccountIAMReconciler) createAccountIAMResources(ctx context.Context, instance *operatorv1alpha1.AccountIAM) error {
 	klog.Infof("Creating Account IAM yamls")
+	base := instance.Name
 	yamlsToProcess := make([]string, len(yamls.ACCOUNT_IAM_RES))
 	for i, v := range yamls.ACCOUNT_IAM_RES {
-		yamlsToProcess[i] = strings.ReplaceAll(v, "${NAMESPACE}", instance.Namespace)
+		v = strings.ReplaceAll(v, "${NAMESPACE}", instance.Namespace)
+		v = replaceBaseName(v, base)
+		yamlsToProcess[i] = v
 	}
 	return r.createResourcesFromYAMLs(ctx, instance, yamlsToProcess)
 }
@@ -817,10 +827,11 @@ func (r *AccountIAMReconciler) createAccountIAMResources(ctx context.Context, in
 func (r *AccountIAMReconciler) createAccountIAMRoutes(ctx context.Context, reconcileCtx *ReconcileContext) error {
 	klog.Infof("Creating Account IAM Routes")
 	instance := reconcileCtx.Instance
+	base := instance.Name
 
-	caCRT, err := utils.GetSecretData(ctx, r.Client, resources.AccountIAMCACert, instance.Namespace, resources.CAKey)
+	caCRT, err := utils.GetSecretData(ctx, r.Client, replaceBaseName(resources.AccountIAMCACert, base), instance.Namespace, resources.CAKey)
 	if err != nil {
-		klog.Errorf("Failed to get ca.crt from secret %s in namespace %s", resources.CSCASecret, instance.Namespace)
+		klog.Errorf("Failed to get ca.crt from secret %s in namespace %s", replaceBaseName(resources.AccountIAMCACert, base), instance.Namespace)
 		return err
 	}
 
@@ -828,7 +839,11 @@ func (r *AccountIAMReconciler) createAccountIAMRoutes(ctx context.Context, recon
 		CAcert: utils.IndentCert(caCRT, 6),
 	}
 
-	return r.injectData(ctx, instance, yamls.ACCOUNT_IAM_ROUTE_RES, reconcileCtx.RouteData)
+	var dynamicRoutes []string
+	for _, rt := range yamls.ACCOUNT_IAM_ROUTE_RES {
+		dynamicRoutes = append(dynamicRoutes, replaceBaseName(rt, base))
+	}
+	return r.injectData(ctx, instance, dynamicRoutes, reconcileCtx.RouteData)
 }
 
 // configureAndWaitForIssuer configures the issuer via CommonService and waits for it
@@ -850,106 +865,32 @@ func (r *AccountIAMReconciler) configureAndWaitForIssuer(ctx context.Context, re
 	return nil
 }
 
-// createResourcesFromYAMLs is a helper function to create resources from YAML manifests
-func (r *AccountIAMReconciler) createResourcesFromYAMLs(ctx context.Context, instance *operatorv1alpha1.AccountIAM, yamls []string) error {
-	for _, v := range yamls {
-		object := &unstructured.Unstructured{}
-
-		if images.ContainsImageReferences(v) {
-			v = images.ReplaceInYAML(v)
-		}
-
-		manifest := []byte(v)
-		if err := yaml.Unmarshal(manifest, object); err != nil {
-			return err
-		}
-		object.SetNamespace(instance.Namespace)
-		if err := controllerutil.SetControllerReference(instance, object, r.Scheme); err != nil {
-			return err
-		}
-		if err := r.createOrUpdate(ctx, object); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (r *AccountIAMReconciler) injectData(ctx context.Context, instance *operatorv1alpha1.AccountIAM, manifests []string, dataList ...interface{}) error {
-
-	// Combine the data from all structs into a single map
-	combinedData := utils.CombineData(dataList...)
-
-	var buffer bytes.Buffer
-	// Loop through each secret manifest that requires data injection
-	for _, manifest := range manifests {
-		object := &unstructured.Unstructured{}
-		buffer.Reset()
-
-		if images.ContainsImageReferences(manifest) {
-			manifest = images.ReplaceInYAML(manifest)
-		}
-
-		t := template.Must(template.New("template resources").Parse(manifest))
-		if err := t.Execute(&buffer, combinedData); err != nil {
-			return err
-		}
-
-		if err := yaml.Unmarshal(buffer.Bytes(), object); err != nil {
-			return err
-		}
-
-		object.SetNamespace(instance.Namespace)
-		if err := controllerutil.SetControllerReference(instance, object, r.Scheme); err != nil {
-			return err
-		}
-
-		if err := r.createOrUpdate(ctx, object); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
+// Re-add configureAuthenticationViaCS and waitForIssuerinCM (previously removed by edits)
 func (r *AccountIAMReconciler) configureAuthenticationViaCS(ctx context.Context, integrationData IntegrationConfig) error {
-	// Update authentication settings in CommonService CR
 	klog.Infof("Updating authentication settings in CommonService CR")
 	commonService := &unstructured.Unstructured{}
 	commonService.SetAPIVersion("operator.ibm.com/v3")
 	commonService.SetKind("CommonService")
-
 	if err := r.Get(ctx, client.ObjectKey{Name: "common-service", Namespace: utils.GetOperatorNamespace()}, commonService); err != nil {
 		klog.Errorf("Failed to get CommonService CR %s/%s: %v", utils.GetOperatorNamespace(), "common-service", err)
 		return err
 	}
-
-	// Extract the services array
 	services, found, err := unstructured.NestedSlice(commonService.Object, "spec", "services")
 	if err != nil {
 		return fmt.Errorf("failed to get services from CommonService CR %s/%s: %v", utils.GetOperatorNamespace(), "common-service", err)
 	} else if !found {
 		services = []interface{}{}
 	}
-
-	// Find the ibm-im-operator service
 	imServiceIndex := -1
 	for i, service := range services {
-		serviceMap, ok := service.(map[string]interface{})
-		if !ok {
-			continue
-		}
-
-		name, ok := serviceMap["name"].(string)
-		if ok && name == "ibm-im-operator" {
-			imServiceIndex = i
-			break
+		if serviceMap, ok := service.(map[string]interface{}); ok {
+			if name, ok := serviceMap["name"].(string); ok && name == "ibm-im-operator" {
+				imServiceIndex = i
+				break
+			}
 		}
 	}
-
-	// Track if we need to update the CR
 	needsUpdate := false
-
-	// If ibm-im-operator service not found, append it
 	if imServiceIndex == -1 {
 		klog.Infof("Adding ibm-im-operator service to CommonService CR %s/%s", utils.GetOperatorNamespace(), "common-service")
 		imService := map[string]interface{}{
@@ -966,57 +907,43 @@ func (r *AccountIAMReconciler) configureAuthenticationViaCS(ctx context.Context,
 		services = append(services, imService)
 		needsUpdate = true
 	} else {
-		// Update existing service
 		serviceMap := services[imServiceIndex].(map[string]interface{})
-
-		// Get or create the necessary nested maps
 		spec, ok := serviceMap["spec"].(map[string]interface{})
 		if !ok {
 			spec = map[string]interface{}{}
 			serviceMap["spec"] = spec
 			needsUpdate = true
 		}
-
 		auth, ok := spec["authentication"].(map[string]interface{})
 		if !ok {
 			auth = map[string]interface{}{}
 			spec["authentication"] = auth
 			needsUpdate = true
 		}
-
 		config, ok := auth["config"].(map[string]interface{})
 		if !ok {
 			config = map[string]interface{}{}
 			auth["config"] = config
 			needsUpdate = true
 		}
-
-		// Check and update oidcIssuerURL
 		if currentURL, ok := config["oidcIssuerURL"].(string); !ok || currentURL != integrationData.DefaultIDPValue {
 			klog.Infof("Updating oidcIssuerURL from %s to %s", currentURL, integrationData.DefaultIDPValue)
 			config["oidcIssuerURL"] = integrationData.DefaultIDPValue
 			needsUpdate = true
 		}
-
-		// Check and update iamUm
 		if currentIAMUM, ok := config["iamUm"].(bool); !ok || !currentIAMUM {
 			klog.Infof("Setting iamUm to true")
 			config["iamUm"] = true
 			needsUpdate = true
 		}
-
-		if !needsUpdate {
-			klog.Infof("CommonService CR %s/%s already has the desired authentication configuration", utils.GetOperatorNamespace(), "common-service")
-		}
-
-		// Update the nested maps back up the chain
 		auth["config"] = config
 		spec["authentication"] = auth
 		serviceMap["spec"] = spec
 		services[imServiceIndex] = serviceMap
+		if !needsUpdate {
+			klog.Infof("CommonService CR %s/%s already has the desired authentication configuration", utils.GetOperatorNamespace(), "common-service")
+		}
 	}
-
-	// Only update if changes were made
 	if needsUpdate {
 		if err := unstructured.SetNestedSlice(commonService.Object, services, "spec", "services"); err != nil {
 			klog.Errorf("Failed to update services in CommonService CR %s/%s: %v", utils.GetOperatorNamespace(), "common-service", err)
@@ -1035,18 +962,13 @@ func (r *AccountIAMReconciler) waitForIssuerinCM(ctx context.Context, ns string,
 	timeout := time.After(5 * time.Minute)
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
-
 	for {
 		select {
 		case <-timeout:
 			return errors.New("timeout waiting for OIDC_ISSUER_URL to be updated in platform-auth-idp ConfigMap")
 		case <-ticker.C:
-			// Check if the ConfigMap has been updated
 			configMap := &corev1.ConfigMap{}
-			if err := r.Get(ctx, types.NamespacedName{
-				Namespace: ns,
-				Name:      "platform-auth-idp",
-			}, configMap); err != nil {
+			if err := r.Get(ctx, types.NamespacedName{Namespace: ns, Name: "platform-auth-idp"}, configMap); err != nil {
 				if k8serrors.IsNotFound(err) {
 					klog.V(2).Infof("platform-auth-idp ConfigMap not found yet, waiting...")
 					continue
@@ -1054,22 +976,17 @@ func (r *AccountIAMReconciler) waitForIssuerinCM(ctx context.Context, ns string,
 				klog.Errorf("Error getting platform-auth-idp ConfigMap: %v", err)
 				continue
 			}
-
-			// Check if the OIDC_ISSUER_URL field has been updated
 			if issuerURL, ok := configMap.Data["OIDC_ISSUER_URL"]; ok {
 				if issuerURL == integrationData.DefaultIDPValue {
 					klog.Infof("OIDC_ISSUER_URL successfully updated to %s in platform-auth-idp ConfigMap", issuerURL)
-					goto endWait
+					return nil
 				}
-				klog.V(2).Infof("OIDC_ISSUER_URL in ConfigMap is %s, waiting for %s...",
-					issuerURL, integrationData.DefaultIDPValue)
+				klog.V(2).Infof("OIDC_ISSUER_URL in ConfigMap is %s, waiting for %s...", issuerURL, integrationData.DefaultIDPValue)
 			} else {
 				klog.V(2).Infof("OIDC_ISSUER_URL field not found in ConfigMap %s/%s, waiting...", ns, "platform-auth-idp")
 			}
 		}
 	}
-endWait:
-	return nil
 }
 
 // -------------- Reconcile resources helper functions done --------------
@@ -1135,6 +1052,7 @@ func (r *AccountIAMReconciler) reconcileUI(ctx context.Context, reconcileCtx *Re
 func (r *AccountIAMReconciler) initUIBootstrapData(ctx context.Context, reconcileCtx *ReconcileContext) error {
 	klog.Infof("Initializing UI Bootstrap Data")
 	instance := reconcileCtx.Instance
+	base := instance.Name
 
 	clusterInfo := &corev1.ConfigMap{}
 	if err := r.Get(ctx, types.NamespacedName{Namespace: instance.Namespace, Name: "ibmcloud-cluster-info"}, clusterInfo); err != nil {
@@ -1151,12 +1069,11 @@ func (r *AccountIAMReconciler) initUIBootstrapData(ctx context.Context, reconcil
 	domain := strings.Join(parsing[1:], ".")
 	klog.Infof("domain: %s", domain)
 
-	// Use GetSecretsData to fetch all secrets concurrently
 	secrets := map[string]string{
 		"apiKey":        fmt.Sprintf("%s/%s", resources.IMAPISecret, resources.MCSPAPIKey),
-		"redisURLSSL":   fmt.Sprintf("%s/%s", resources.Rediscp, resources.RedisURLssl),
-		"redisPassword": fmt.Sprintf("%s/%s", resources.Rediscp, resources.RedisPassword),
-		"redisCACert":   fmt.Sprintf("%s/%s", resources.RedisCACert, resources.CAKey),
+		"redisURLSSL":   fmt.Sprintf("%s/%s", replaceBaseName(resources.Rediscp, base), resources.RedisURLssl),
+		"redisPassword": fmt.Sprintf("%s/%s", replaceBaseName(resources.Rediscp, base), resources.RedisPassword),
+		"redisCACert":   fmt.Sprintf("%s/%s", replaceBaseName(resources.RedisCACert, base), resources.CAKey),
 	}
 
 	klog.Infof("Batch retrieving %d secrets for UI bootstrap data", len(secrets))
@@ -1166,7 +1083,6 @@ func (r *AccountIAMReconciler) initUIBootstrapData(ctx context.Context, reconcil
 		return err
 	}
 
-	// Extract individual values from batch results
 	apiKey := results["apiKey"]
 	redisURlssl := results["redisURLSSL"]
 	redisPassword := results["redisPassword"]
@@ -1195,8 +1111,8 @@ func (r *AccountIAMReconciler) initUIBootstrapData(ctx context.Context, reconcil
 	}
 
 	reconcileCtx.UIData = UIBootstrapTemplate{
-		Hostname:                   utils.Concat("account-iam-console-", instance.Namespace, ".", domain),
-		InstanceManagementHostname: utils.Concat("account-iam-console-", instance.Namespace, ".", domain),
+		Hostname:                   utils.Concat(base, "-console-", instance.Namespace, ".", domain),
+		InstanceManagementHostname: utils.Concat(base, "-console-", instance.Namespace, ".", domain),
 		ClientID:                   string(decodedClientID),
 		ClientSecret:               string(decodedClientSecret),
 		IAMGlobalAPIKey:            apiKey,
@@ -1206,7 +1122,7 @@ func (r *AccountIAMReconciler) initUIBootstrapData(ctx context.Context, reconcil
 		RedisCA:                    caCRT,
 		SessionSecret:              string(SessionSecret[0]),
 		DeploymentCloud:            "IBM_CLOUD",
-		IAMAPI:                     utils.Concat("https://account-iam-", instance.Namespace, ".", domain),
+		IAMAPI:                     utils.Concat("https://", base, "-", instance.Namespace, ".", domain),
 		NodeEnv:                    "production",
 		CertDir:                    "../../security",
 		ConfigEnv:                  "dev",
@@ -1220,97 +1136,19 @@ func (r *AccountIAMReconciler) initUIBootstrapData(ctx context.Context, reconcil
 	return nil
 }
 
-// -------------- Reconcile UI functions done --------------
-
-func (r *AccountIAMReconciler) createOrUpdate(ctx context.Context, obj *unstructured.Unstructured) error {
-
-	fromCluster := &unstructured.Unstructured{}
-	fromCluster.SetGroupVersionKind(obj.GroupVersionKind())
-	err := r.Get(ctx, types.NamespacedName{Namespace: obj.GetNamespace(), Name: obj.GetName()}, fromCluster)
-
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			_, templateHash, err := utils.CalculateHashes(nil, obj)
-			if err != nil {
-				return err
-			}
-			utils.SetHashAnnotation(obj, templateHash)
-
-			if err := r.Create(ctx, obj); err != nil {
-				return err
-			}
-			klog.V(2).Infof("Created resource %s %s/%s.", obj.GetKind(), obj.GetNamespace(), obj.GetName())
-			return nil
-		}
-		return err
+// replaceBaseName replaces the default base resource name with the CR's actual name
+// to allow multiple AccountIAM CR instances to coexist without name collisions.
+func replaceBaseName(s, base string) string {
+	if base == "" || base == resources.AccountIAM { // nothing to replace
+		return s
 	}
-
-	if skipUpdate, ok := fromCluster.GetAnnotations()[resources.SkipAnnotation]; ok && skipUpdate == "true" {
-		klog.Infof("Skipping update for %s %s/%s.", obj.GetKind(), obj.GetNamespace(), obj.GetName())
-		return nil
-	}
-
-	// Get the hash of the existing and new resources
-	clusterHash, templateHash, err := utils.CalculateHashes(fromCluster, obj)
-	if err != nil {
-		return err
-	}
-
-	if obj.GetKind() == "Job" {
-		if templateHash == clusterHash {
-			klog.V(2).Infof("Job resource %s %s/%s has not changed, skipping update.", obj.GetKind(), obj.GetNamespace(), obj.GetName())
-			return nil
-		}
-
-		if err := r.Delete(ctx, fromCluster); err != nil {
-			return err
-		}
-
-		time.Sleep(10 * time.Second)
-
-		utils.SetHashAnnotation(obj, templateHash)
-
-		if err := r.Create(ctx, obj); err != nil {
-			return err
-		}
-		klog.Infof("Recreated Job resource %s %s/%s due to hash mismatch.", obj.GetKind(), obj.GetNamespace(), obj.GetName())
-		return nil
-	}
-
-	// handle non-Job resources
-	if clusterHash == templateHash {
-		// Merge fromTemplate into fromCluster and update
-
-		mergedObj, err := utils.MergeResources(fromCluster, obj)
-		if err != nil {
-			return err
-		}
-
-		utils.SetHashAnnotation(mergedObj, templateHash)
-		mergedObj.SetResourceVersion(fromCluster.GetResourceVersion())
-
-		if err := r.Update(ctx, mergedObj); err != nil {
-			return err
-		}
-		klog.V(2).Infof("Updated resource %s %s/%s with merged fields.", obj.GetKind(), obj.GetNamespace(), obj.GetName())
-		return nil
-	}
-
-	// If hashes don't match, overwrite fromCluster with fromTemplate
-	utils.SetHashAnnotation(obj, templateHash)
-
-	// Update the resource if the configuration has changed
-	obj.SetResourceVersion(fromCluster.GetResourceVersion())
-	if err := r.Update(ctx, obj); err != nil {
-		return err
-	}
-
-	return nil
+	return strings.ReplaceAll(s, resources.AccountIAM, base)
 }
 
 // updateManagedResourcesStatus updates the status field of the AccountIAM CR
 // with information about all the resources it manages
 func (r *AccountIAMReconciler) updateManagedResourcesStatus(ctx context.Context, instance *operatorv1alpha1.AccountIAM) {
+	base := instance.Name
 
 	// Create a direct AccountIAM service status
 	accountIAMService := odlm.OperandStatus{
@@ -1318,18 +1156,41 @@ func (r *AccountIAMReconciler) updateManagedResourcesStatus(ctx context.Context,
 		Kind:       resources.UserMgmtCR,
 		APIVersion: resources.OperatorIBMApiVersion,
 		Namespace:  instance.Namespace,
-		Status:     operatorv1alpha1.PhaseRunning, // Default to running, will update based on resource status
+		Status:     operatorv1alpha1.PhaseRunning, // Default
 	}
-
 	var managedResources []odlm.ResourceStatus
 	allResourcesReady := true
 
-	// Check Redis status
-	redisResource, redisReady := utils.GetRedisResourceStatus(ctx, r.Client, instance.Namespace)
-	managedResources = append(managedResources, redisResource)
-	if !redisReady {
+	// Dynamic Redis status
+	redisName := replaceBaseName(resources.Rediscp, base)
+	redisResource := odlm.ResourceStatus{
+		ObjectName: redisName,
+		Namespace:  instance.Namespace,
+		Kind:       resources.RedisKind,
+		APIVersion: resources.RedisAPIGroup + "/" + resources.Version,
+		Status:     operatorv1alpha1.StatusNotReady,
+	}
+	redisCR := &unstructured.Unstructured{}
+	redisCR.SetAPIVersion(resources.RedisAPIGroup + "/" + resources.Version)
+	redisCR.SetKind(resources.RedisKind)
+	if err := r.Get(ctx, client.ObjectKey{Name: redisName, Namespace: instance.Namespace}, redisCR); err != nil {
+		if !k8serrors.IsNotFound(err) {
+			redisResource.Status = operatorv1alpha1.StatusError
+			allResourcesReady = false
+		} else {
+			redisResource.Status = operatorv1alpha1.StatusNotFound
+			allResourcesReady = false
+		}
+	} else if status, found, err := unstructured.NestedString(redisCR.Object, "status", resources.RedisStatus); err != nil || !found {
+		redisResource.Status = operatorv1alpha1.StatusError
+		allResourcesReady = false
+	} else if status == operatorv1alpha1.StatusCompleted {
+		redisResource.Status = operatorv1alpha1.StatusCompleted
+	} else {
+		redisResource.Status = operatorv1alpha1.StatusNotReady
 		allResourcesReady = false
 	}
+	managedResources = append(managedResources, redisResource)
 
 	// Check OperandRequest status
 	operandResource, operandReady := utils.GetOperandRequestStatus(ctx, r.Client, instance.Namespace)
@@ -1338,8 +1199,12 @@ func (r *AccountIAMReconciler) updateManagedResourcesStatus(ctx context.Context,
 		allResourcesReady = false
 	}
 
-	// Check job statuses
-	jobsToCheck := []string{resources.CreateDBJob, resources.DBMigrationJob, resources.IMConfigJob}
+	// Check job statuses (dynamic names for first two)
+	jobsToCheck := []string{
+		replaceBaseName(resources.CreateDBJob, base),
+		replaceBaseName(resources.DBMigrationJob, base),
+		resources.IMConfigJob,
+	}
 	for _, jobName := range jobsToCheck {
 		jobResource, jobReady := utils.GetJobStatus(ctx, r.Client, jobName, instance.Namespace)
 		managedResources = append(managedResources, jobResource)
@@ -1350,9 +1215,9 @@ func (r *AccountIAMReconciler) updateManagedResourcesStatus(ctx context.Context,
 
 	// Check service statuses
 	servicesToCheck := []string{
-		resources.AccountIAM,
-		resources.AccountIAMUIService,
-		resources.AccountIAMUIAPIService,
+		replaceBaseName(resources.AccountIAM, base),
+		replaceBaseName(resources.AccountIAMUIService, base),
+		replaceBaseName(resources.AccountIAMUIAPIService, base),
 	}
 	for _, serviceName := range servicesToCheck {
 		serviceResource, serviceReady := utils.GetServiceStatus(ctx, r.Client, serviceName, instance.Namespace)
@@ -1364,15 +1229,15 @@ func (r *AccountIAMReconciler) updateManagedResourcesStatus(ctx context.Context,
 
 	// Check secret statuses
 	secretsToCheck := []string{
-		resources.BootstrapSecret,
-		resources.AccountIAMDBSecret,
-		resources.AccountIAMConfigSecret,
-		resources.AccountIAMOidcClientAuth,
-		resources.AccountIAMOKDAuth,
-		resources.AccountIAMUISecrets,
+		replaceBaseName(resources.BootstrapSecret, base), // remains unchanged unless base == account-iam
+		replaceBaseName(resources.AccountIAMDBSecret, base),
+		replaceBaseName(resources.AccountIAMConfigSecret, base),
+		replaceBaseName(resources.AccountIAMOidcClientAuth, base),
+		replaceBaseName(resources.AccountIAMOKDAuth, base),
+		replaceBaseName(resources.AccountIAMUISecrets, base),
 		resources.IMOIDCCrendential,
 		resources.IMAPISecret,
-		resources.AccountIAMCACert,
+		replaceBaseName(resources.AccountIAMCACert, base),
 	}
 	for _, secretName := range secretsToCheck {
 		secretResource, secretReady := utils.GetSecretStatus(ctx, r.Client, secretName, instance.Namespace)
@@ -1384,9 +1249,9 @@ func (r *AccountIAMReconciler) updateManagedResourcesStatus(ctx context.Context,
 
 	// Check route statuses
 	routesToCheck := []string{
-		resources.AccountIAM,
-		resources.AccountIAMUIRoute,
-		resources.AccountIAMUIAPIInstance,
+		replaceBaseName(resources.AccountIAM, base),
+		replaceBaseName(resources.AccountIAMUIRoute, base),
+		replaceBaseName(resources.AccountIAMUIAPIInstance, base),
 	}
 	for _, routeName := range routesToCheck {
 		routeResource, routeReady := utils.GetRouteStatus(ctx, r.Client, routeName, instance.Namespace)
@@ -1479,4 +1344,123 @@ func (r *AccountIAMReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&rbacv1.Role{}).
 		Owns(&rbacv1.RoleBinding{}).
 		Complete(r)
+}
+
+// createResourcesFromYAMLs restored after accidental deletion
+func (r *AccountIAMReconciler) createResourcesFromYAMLs(ctx context.Context, instance *operatorv1alpha1.AccountIAM, yamlsList []string) error {
+	base := instance.Name
+	for _, v := range yamlsList {
+		object := &unstructured.Unstructured{}
+		if images.ContainsImageReferences(v) {
+			v = images.ReplaceInYAML(v)
+		}
+		v = replaceBaseName(v, base)
+		manifest := []byte(v)
+		if err := yaml.Unmarshal(manifest, object); err != nil {
+			return err
+		}
+		object.SetNamespace(instance.Namespace)
+		if err := controllerutil.SetControllerReference(instance, object, r.Scheme); err != nil {
+			return err
+		}
+		if err := r.createOrUpdate(ctx, object); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// injectData restored after accidental deletion
+func (r *AccountIAMReconciler) injectData(ctx context.Context, instance *operatorv1alpha1.AccountIAM, manifests []string, dataList ...interface{}) error {
+	combinedData := utils.CombineData(dataList...)
+	base := instance.Name
+	var buffer bytes.Buffer
+	for _, manifest := range manifests {
+		object := &unstructured.Unstructured{}
+		buffer.Reset()
+		if images.ContainsImageReferences(manifest) {
+			manifest = images.ReplaceInYAML(manifest)
+		}
+		t := template.Must(template.New("template resources").Parse(manifest))
+		if err := t.Execute(&buffer, combinedData); err != nil {
+			return err
+		}
+		processed := replaceBaseName(buffer.String(), base)
+		if err := yaml.Unmarshal([]byte(processed), object); err != nil {
+			return err
+		}
+		object.SetNamespace(instance.Namespace)
+		if err := controllerutil.SetControllerReference(instance, object, r.Scheme); err != nil {
+			return err
+		}
+		if err := r.createOrUpdate(ctx, object); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// createOrUpdate restored (was previously removed during dynamic naming changes)
+func (r *AccountIAMReconciler) createOrUpdate(ctx context.Context, obj *unstructured.Unstructured) error {
+	fromCluster := &unstructured.Unstructured{}
+	fromCluster.SetGroupVersionKind(obj.GroupVersionKind())
+	err := r.Get(ctx, types.NamespacedName{Namespace: obj.GetNamespace(), Name: obj.GetName()}, fromCluster)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			_, templateHash, err := utils.CalculateHashes(nil, obj)
+			if err != nil {
+				return err
+			}
+			utils.SetHashAnnotation(obj, templateHash)
+			if err := r.Create(ctx, obj); err != nil {
+				return err
+			}
+			klog.V(2).Infof("Created resource %s %s/%s.", obj.GetKind(), obj.GetNamespace(), obj.GetName())
+			return nil
+		}
+		return err
+	}
+	if skipUpdate, ok := fromCluster.GetAnnotations()[resources.SkipAnnotation]; ok && skipUpdate == "true" {
+		klog.Infof("Skipping update for %s %s/%s.", obj.GetKind(), obj.GetNamespace(), obj.GetName())
+		return nil
+	}
+	clusterHash, templateHash, err := utils.CalculateHashes(fromCluster, obj)
+	if err != nil {
+		return err
+	}
+	if obj.GetKind() == "Job" {
+		if templateHash == clusterHash {
+			klog.V(2).Infof("Job resource %s %s/%s has not changed, skipping update.", obj.GetKind(), obj.GetNamespace(), obj.GetName())
+			return nil
+		}
+		if err := r.Delete(ctx, fromCluster); err != nil {
+			return err
+		}
+		time.Sleep(10 * time.Second)
+		utils.SetHashAnnotation(obj, templateHash)
+		if err := r.Create(ctx, obj); err != nil {
+			return err
+		}
+		klog.Infof("Recreated Job resource %s %s/%s due to hash mismatch.", obj.GetKind(), obj.GetNamespace(), obj.GetName())
+		return nil
+	}
+	if clusterHash == templateHash {
+		mergedObj, err := utils.MergeResources(fromCluster, obj)
+		if err != nil {
+			return err
+		}
+		utils.SetHashAnnotation(mergedObj, templateHash)
+		mergedObj.SetResourceVersion(fromCluster.GetResourceVersion())
+		if err := r.Update(ctx, mergedObj); err != nil {
+			return err
+		}
+		klog.V(2).Infof("Updated resource %s %s/%s with merged fields.", obj.GetKind(), obj.GetNamespace(), obj.GetName())
+		return nil
+	}
+	utils.SetHashAnnotation(obj, templateHash)
+	obj.SetResourceVersion(fromCluster.GetResourceVersion())
+	if err := r.Update(ctx, obj); err != nil {
+		return err
+	}
+	return nil
 }
