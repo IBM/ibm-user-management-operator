@@ -1033,7 +1033,9 @@ func (r *AccountIAMReconciler) reconcileUI(ctx context.Context, reconcileCtx *Re
 			return err
 		}
 
-		if err := yaml.Unmarshal(tmplWriter.Bytes(), object); err != nil {
+		processed := replaceBaseName(tmplWriter.String(), reconcileCtx.Instance.Name)
+
+		if err := yaml.Unmarshal([]byte(processed), object); err != nil {
 			return err
 		}
 		object.SetNamespace(reconcileCtx.Instance.Namespace)
