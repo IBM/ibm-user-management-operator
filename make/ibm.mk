@@ -32,17 +32,21 @@ require-local-bin-dir:
 	
 
 ARCH := $(shell uname -m)
+
+# Auto-detect LOCAL_ARCH only when the caller hasn't provided one.
+ifeq ($(origin LOCAL_ARCH), undefined)
 LOCAL_ARCH := amd64
 ifeq ($(ARCH),x86_64)
-    LOCAL_ARCH := amd64
+	LOCAL_ARCH := amd64
 else ifeq ($(ARCH),ppc64le)
-    LOCAL_ARCH := ppc64le
+	LOCAL_ARCH := ppc64le
 else ifeq ($(ARCH),s390x)
-    LOCAL_ARCH := s390x
+	LOCAL_ARCH := s390x
 else ifeq ($(ARCH),arm64)
-    LOCAL_ARCH := arm64
+	LOCAL_ARCH := arm64
 else
-    $(error "This system's ARCH $(ARCH) isn't recognized/supported")
+	$(error "This system's ARCH $(ARCH) isn't recognized/supported")
+endif
 endif
 
 OS := $(shell uname)
@@ -102,7 +106,8 @@ catalog-build-push-dev: configure-dev catalog-build-dev catalog-push
 ##@ Production Build
 
 .PHONY: docker-build-push-prod
-docker-build-push-prod: docker-build
+docker-build-push-prod:
+	$(MAKE) docker-build
 	$(CONTAINER_TOOL) tag $(IMG) $(IMAGE_TAG_BASE)-$(LOCAL_ARCH):$(BUILD_VERSION)
 	$(MAKE) docker-push IMG=$(IMAGE_TAG_BASE)-$(LOCAL_ARCH):$(BUILD_VERSION)
 
