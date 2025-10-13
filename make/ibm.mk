@@ -29,7 +29,6 @@ LOCAL_SCRIPTS_DIR ?= $(ROOT_DIR)/scripts
 .PHONY: require-local-bin-dir
 require-local-bin-dir:
 	mkdir -p $(LOCAL_BIN_DIR)
-	
 
 ARCH := $(shell uname -m)
 
