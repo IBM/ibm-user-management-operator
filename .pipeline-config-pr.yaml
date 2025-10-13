@@ -18,7 +18,7 @@ tasks:
           - docker-socket
           - dind
         image: icr.io/continuous-delivery/base-images/base:v1.21.0
-        displayName: Run unit tests
+        displayName: Build amd64 user mgmt operator image
         script: |
           #!/usr/bin/env bash
           if [[ "$PIPELINE_DEBUG" == 1 ]]; then
@@ -30,9 +30,8 @@ tasks:
           export DOCKER_REGISTRY="$(get_env DOCKER_REGISTRY)"
           export DOCKER_USER="$(get_env DOCKER_USER)"
           export DOCKER_PASS="$(get_env DOCKER_PASS)"
-          export BUILD_LOCALLY=1
+          export LOCAL_ARCH=amd64
           make go
-          make podman
           make config-docker
           make docker-build-push-prod
       - name: compliance-checks
@@ -40,7 +39,7 @@ tasks:
 
   pr-code-checks-ppc:
     from: pr-code-checks
-    runtimeClassName: ppc64le-medium
+    runtimeClassName: x86-xlarge
     include:
       - dind
     steps:
@@ -53,7 +52,7 @@ tasks:
           - docker-socket
           - dind
         image: icr.io/continuous-delivery/base-images/base:v1.21.0
-        displayName: Build ppc acmesolver image
+        displayName: Build ppc user mgmt operator image
         script: |
           #!/usr/bin/env bash
           if [[ "$PIPELINE_DEBUG" == 1 ]]; then
@@ -65,9 +64,8 @@ tasks:
           export DOCKER_REGISTRY="$(get_env DOCKER_REGISTRY)"
           export DOCKER_USER="$(get_env DOCKER_USER)"
           export DOCKER_PASS="$(get_env DOCKER_PASS)"
-          export BUILD_LOCALLY=1
+          export LOCAL_ARCH=ppc64le
           make go
-          make podman
           make config-docker
           make docker-build-push-prod
       - name: compliance-checks
@@ -75,7 +73,7 @@ tasks:
   
   pr-code-checks-s390:
     from: pr-code-checks
-    runtimeClassName: s390x-medium
+    runtimeClassName: x86-xlarge
     include:
       - dind
     steps:
@@ -88,7 +86,7 @@ tasks:
           - docker-socket
           - dind
         image: icr.io/continuous-delivery/base-images/base:v1.21.0
-        displayName: Build s390 acmesolver image
+        displayName: Build s390 user mgmt operator image
         script: |
           #!/usr/bin/env bash
           if [[ "$PIPELINE_DEBUG" == 1 ]]; then
@@ -100,9 +98,8 @@ tasks:
           export DOCKER_REGISTRY="$(get_env DOCKER_REGISTRY)"
           export DOCKER_USER="$(get_env DOCKER_USER)"
           export DOCKER_PASS="$(get_env DOCKER_PASS)"
-          export BUILD_LOCALLY=1
+          export LOCAL_ARCH=s390x
           make go
-          make podman
           make config-docker
           make docker-build-push-prod
       - name: compliance-checks
@@ -129,7 +126,7 @@ tasks:
         include:
           - rootful-podman
         image: icr.io/continuous-delivery/base-images/base:v1.21.0
-        displayName: Build multiarch acmesolver image
+        displayName: Build multiarch user mgmt operator image
         script: |
           #!/usr/bin/env bash
           if [[ "$PIPELINE_DEBUG" == 1 ]]; then
@@ -141,7 +138,6 @@ tasks:
           export DOCKER_REGISTRY="$(get_env DOCKER_REGISTRY)"
           export DOCKER_USER="$(get_env DOCKER_USER)"
           export DOCKER_PASS="$(get_env DOCKER_PASS)"
-          export BUILD_LOCALLY=1
           make podman
           make config-docker
           make multiarch-image
