@@ -138,7 +138,6 @@ tasks:
           export DOCKER_REGISTRY="$(get_env DOCKER_REGISTRY)"
           export DOCKER_USER="$(get_env DOCKER_USER)"
           export DOCKER_PASS="$(get_env DOCKER_PASS)"
-          make podman
           make config-docker
           make multiarch-image
       - name: compliance-checks
