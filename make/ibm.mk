@@ -5,9 +5,8 @@ CHANNELS ?= v1.0
 
 # IBM specific # 
 
-ifeq ($(BUILD_LOCALLY),0)
-	IMG_REGISTRY ?= docker-na-public.artifactory.swg-devops.com/hyc-cloud-private-integration-docker-local/ibmcom
-	export CONFIG_DOCKER_TARGET = config-docker
+ifdef DOCKER_REGISTRY
+	IMG_REGISTRY ?= $(DOCKER_REGISTRY)
 else
 	IMG_REGISTRY ?= docker-na-public.artifactory.swg-devops.com/hyc-cloud-private-scratch-docker-local/ibmcom
 endif
@@ -110,7 +109,7 @@ docker-build-push-prod:
 	$(CONTAINER_TOOL) tag $(IMG) $(IMAGE_TAG_BASE)-$(LOCAL_ARCH):$(BUILD_VERSION)
 	$(MAKE) docker-push IMG=$(IMAGE_TAG_BASE)-$(LOCAL_ARCH):$(BUILD_VERSION)
 
-multiarch-image: $(CONFIG_DOCKER_TARGET)
+multiarch-image:
 	@MAX_PULLING_RETRY=20 RETRY_INTERVAL=30 common/scripts/multiarch_image.sh $(IMAGE_TAG_BASE) $(BUILD_VERSION) $(VERSION)
 
 clean-before-commit:
@@ -125,7 +124,11 @@ clean-before-commit:
 .PHONY: config-docker
 config-docker:
 	@echo "Configuring docker for building images"
-	$(CONTAINER_TOOL) login -u $(DOCKER_USER) -p $(DOCKER_PASS) $(DOCKER_REGISTRY); \
+	@if [ -z "$(DOCKER_USER)" ] || [ -z "$(DOCKER_PASS)" ]; then \
+			echo "Error: DOCKER_USER and DOCKER_PASS must be defined"; \
+			exit 1; \
+		fi
+	$(CONTAINER_TOOL) login -u $(DOCKER_USER) -p $(DOCKER_PASS) $(IMG_REGISTRY); \
 
 # Test
 .PHONY: check
@@ -135,8 +138,6 @@ check: ## @code Run the code check
 # Override default variable values or prerequisites from top level Makefile #
 
 bundle: IMG = icr.io/cpopen/ibm-user-management-operator:latest
-
-docker-build: $(CONFIG_DOCKER_TARGET)
 
 # Change the image to dev when applying deployment manifests
 deploy: configure-dev
