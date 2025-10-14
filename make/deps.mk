@@ -51,23 +51,3 @@ else
 YQ = $(shell which yq)
 endif
 endif
-
-## Install go if not found
-.PHONY: go
-go:
-ifeq (,$(shell which go 2>/dev/null))
-	@{ \
-	echo "Installing golang" ;\
-	yum install -y golang ;\
-	}
-endif
-
-## install podman if not found
-.PHONY: podman
-podman:
-ifeq (,$(shell which podman 2>/dev/null))
-	@{ \
-	echo "Installing podman" ;\
-	yum install -y podman ;\
-	}
-endif
