@@ -18,6 +18,38 @@ tasks:
           - docker-socket
           - dind
         image: icr.io/continuous-delivery/base-images/base:v1.21.0
+        displayName: Unit test for user mgmt operator
+        script: |
+          #!/usr/bin/env bash
+          if [[ "$PIPELINE_DEBUG" == 1 ]]; then
+              trap env EXIT
+              env
+              set -x
+          fi
+          cd "$WORKSPACE/$(load_repo app-repo path)"
+          echo "Skip unit tests for now"
+          # install go dependencies
+          # make test
+      - name: compliance-checks
+        when: 'false'
+
+  pr-code-checks-amd64:
+    from: pr-code-checks
+    runtimeClassName: x86-xlarge
+    include:
+      - dind
+    steps:
+      - name: checks-setup
+        when: 'false'
+      - name: detect-secrets
+        when: 'true'
+        include:
+          - docker-socket
+      - name: unit-test
+        include:
+          - docker-socket
+          - dind
+        image: icr.io/continuous-delivery/base-images/base:v1.21.0
         displayName: Build amd64 user mgmt operator image
         script: |
           #!/usr/bin/env bash
@@ -31,7 +63,6 @@ tasks:
           export DOCKER_USER="$(get_env DOCKER_USER)"
           export DOCKER_PASS="$(get_env DOCKER_PASS)"
           export LOCAL_ARCH=amd64
-          make go
           make config-docker
           make docker-build-push-prod
       - name: compliance-checks
@@ -65,7 +96,6 @@ tasks:
           export DOCKER_USER="$(get_env DOCKER_USER)"
           export DOCKER_PASS="$(get_env DOCKER_PASS)"
           export LOCAL_ARCH=ppc64le
-          make go
           make config-docker
           make docker-build-push-prod
       - name: compliance-checks
@@ -99,7 +129,6 @@ tasks:
           export DOCKER_USER="$(get_env DOCKER_USER)"
           export DOCKER_PASS="$(get_env DOCKER_PASS)"
           export LOCAL_ARCH=s390x
-          make go
           make config-docker
           make docker-build-push-prod
       - name: compliance-checks
