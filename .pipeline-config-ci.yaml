@@ -22,16 +22,17 @@ tasks:
         
   code-build:
     include:
-      - podman
+      - dind
     # code-build includes five configurable steps: setup, unit-test, build-artifact, sign-artifact, scan-artifact
     steps:
       - name: setup
         when: 'false'
       - name: unit-test
         include:
-          - rootful-podman
+          - docker-socket
+          - dind
         image: icr.io/continuous-delivery/base-images/base:v1.21.0
-        displayName: Run unit tests
+        displayName: Unit test for user mgmt operator
         script: |
           #!/usr/bin/env bash
           if [[ "$PIPELINE_DEBUG" == 1 ]]; then
@@ -39,23 +40,22 @@ tasks:
               env
               set -x
           fi
-          export DOCKER_REGISTRY="$(get_env DOCKER_REGISTRY)"
-          export DOCKER_USER="$(get_env DOCKER_USER)"
-          export DOCKER_PASS="$(get_env DOCKER_PASS)"
-          make config-docker
-          make docker-build-push-prod
+          cd "$WORKSPACE/$(load_repo app-repo path)"
+          echo "Installing Go dependencies"
+          yum install -y golang
+          echo "Skip unit tests for now"
+          # make test
       - name: build-artifact
         when: 'false'
       - name: sign-artifact
         when: 'false'
       - name: scan-artifact
         when: 'false'
-
-  code-build-ppc64le:
+  
+  code-build-amd64:
     from: code-build
-    runtimeClassName: ppc64le-medium
+    runtimeClassName: x86-xlarge
     include:
-      - podman
       - dind
     steps:
       - name: setup
@@ -64,9 +64,10 @@ tasks:
         when: 'false'
       - name: build-artifact
         include:
-          - rootful-podman
+          - docker-socket
+          - dind
         image: icr.io/continuous-delivery/base-images/base:v1.21.0
-        displayName: Build amd acmesolver image
+        displayName: Build amd64 user mgmt operator image
         script: |
           #!/usr/bin/env bash
           if [[ "$PIPELINE_DEBUG" == 1 ]]; then
@@ -78,6 +79,46 @@ tasks:
           export DOCKER_REGISTRY="$(get_env DOCKER_REGISTRY)"
           export DOCKER_USER="$(get_env DOCKER_USER)"
           export DOCKER_PASS="$(get_env DOCKER_PASS)"
+          export LOCAL_ARCH=amd64
+          echo "Installing Go dependencies"
+          yum install -y golang
+          make config-docker
+          make docker-build-push-prod
+      - name: sign-artifact
+        when: 'false'
+      - name: scan-artifact
+        when: 'false'
+
+  code-build-ppc64le:
+    from: code-build
+    runtimeClassName: x86-xlarge
+    include:
+      - dind
+    steps:
+      - name: setup
+        when: 'false'
+      - name: unit-test
+        when: 'false'
+      - name: build-artifact
+        include:
+          - docker-socket
+          - dind
+        image: icr.io/continuous-delivery/base-images/base:v1.21.0
+        displayName: Build ppc user mgmt operator image
+        script: |
+          #!/usr/bin/env bash
+          if [[ "$PIPELINE_DEBUG" == 1 ]]; then
+              trap env EXIT
+              env
+              set -x
+          fi
+          cd "$WORKSPACE/$(load_repo app-repo path)"
+          export DOCKER_REGISTRY="$(get_env DOCKER_REGISTRY)"
+          export DOCKER_USER="$(get_env DOCKER_USER)"
+          export DOCKER_PASS="$(get_env DOCKER_PASS)"
+          export LOCAL_ARCH=ppc64le
+          echo "Installing Go dependencies"
+          yum install -y golang
           make config-docker
           make docker-build-push-prod
       - name: sign-artifact
@@ -87,9 +128,9 @@ tasks:
 
   code-build-s390:
     from: code-build
-    runtimeClassName: s390x-medium
+    runtimeClassName: x86-xlarge
     include:
-      - podman
+      - dind
     steps:
       - name: setup
         when: 'false'
@@ -97,9 +138,10 @@ tasks:
         when: 'false'
       - name: build-artifact
         include:
-          - rootful-podman
+          - docker-socket
+          - dind
         image: icr.io/continuous-delivery/base-images/base:v1.21.0
-        displayName: Build s390 acmesolver image
+        displayName: Build s390 user mgmt operator image
         script: |
           #!/usr/bin/env bash
           if [[ "$PIPELINE_DEBUG" == 1 ]]; then
@@ -111,6 +153,9 @@ tasks:
           export DOCKER_REGISTRY="$(get_env DOCKER_REGISTRY)"
           export DOCKER_USER="$(get_env DOCKER_USER)"
           export DOCKER_PASS="$(get_env DOCKER_PASS)"
+          export LOCAL_ARCH=s390x
+          echo "Installing Go dependencies"
+          yum install -y golang
           make config-docker
           make docker-build-push-prod
       - name: sign-artifact
@@ -122,11 +167,11 @@ tasks:
     from: code-build
     runtimeClassName: x86-xlarge
     runAfter: 
-      - code-build
+      - code-build-amd64
       - code-build-ppc
       - code-build-s390
     include:
-      - podman
+      - dind
     steps:
       - name: setup
         when: 'false'
@@ -134,9 +179,10 @@ tasks:
         when: 'false'
       - name: build-artifact
         include:
-          - rootful-podman
+          - docker-socket
+          - dind
         image: icr.io/continuous-delivery/base-images/base:v1.21.0
-        displayName: Build multiarch acmesolver image
+        displayName: Build multiarch user mgmt operator image
         script: |
           #!/usr/bin/env bash
           if [[ "$PIPELINE_DEBUG" == 1 ]]; then
@@ -148,6 +194,8 @@ tasks:
           export DOCKER_REGISTRY="$(get_env DOCKER_REGISTRY)"
           export DOCKER_USER="$(get_env DOCKER_USER)"
           export DOCKER_PASS="$(get_env DOCKER_PASS)"
+          echo "Installing Go dependencies"
+          yum install -y golang
           make config-docker
           make multiarch-image
       - name: sign-artifact

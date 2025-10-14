@@ -27,8 +27,9 @@ tasks:
               set -x
           fi
           cd "$WORKSPACE/$(load_repo app-repo path)"
+          echo "Installing Go dependencies"
+          yum install -y golang
           echo "Skip unit tests for now"
-          # install go dependencies before testing
           # make test
       - name: compliance-checks
         when: 'false'
@@ -63,6 +64,8 @@ tasks:
           export DOCKER_USER="$(get_env DOCKER_USER)"
           export DOCKER_PASS="$(get_env DOCKER_PASS)"
           export LOCAL_ARCH=amd64
+          echo "Installing Go dependencies"
+          yum install -y golang
           make config-docker
           make docker-build-push-prod
       - name: compliance-checks
@@ -96,6 +99,8 @@ tasks:
           export DOCKER_USER="$(get_env DOCKER_USER)"
           export DOCKER_PASS="$(get_env DOCKER_PASS)"
           export LOCAL_ARCH=ppc64le
+          echo "Installing Go dependencies"
+          yum install -y golang
           make config-docker
           make docker-build-push-prod
       - name: compliance-checks
@@ -129,6 +134,8 @@ tasks:
           export DOCKER_USER="$(get_env DOCKER_USER)"
           export DOCKER_PASS="$(get_env DOCKER_PASS)"
           export LOCAL_ARCH=s390x
+          echo "Installing Go dependencies"
+          yum install -y golang
           make config-docker
           make docker-build-push-prod
       - name: compliance-checks
@@ -168,6 +175,8 @@ tasks:
           export DOCKER_REGISTRY="$(get_env DOCKER_REGISTRY)"
           export DOCKER_USER="$(get_env DOCKER_USER)"
           export DOCKER_PASS="$(get_env DOCKER_PASS)"
+          echo "Installing Go dependencies"
+          yum install -y golang
           make config-docker
           make multiarch-image
       - name: compliance-checks
