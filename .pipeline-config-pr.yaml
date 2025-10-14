@@ -28,7 +28,7 @@ tasks:
           fi
           cd "$WORKSPACE/$(load_repo app-repo path)"
           echo "Skip unit tests for now"
-          # install go dependencies
+          # install go dependencies before testing
           # make test
       - name: compliance-checks
         when: 'false'
