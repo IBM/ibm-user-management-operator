@@ -79,6 +79,8 @@ tasks:
           export DOCKER_REGISTRY="$(get_env DOCKER_REGISTRY)"
           export DOCKER_USER="$(get_env DOCKER_USER)"
           export DOCKER_PASS="$(get_env DOCKER_PASS)"
+          export GIT_COMMIT="$(get_env git-commit)"
+          export BUILD_VERSION="${GIT_COMMIT:0:7}"
           export LOCAL_ARCH=amd64
           echo "Installing Go dependencies"
           yum install -y golang
@@ -116,6 +118,8 @@ tasks:
           export DOCKER_REGISTRY="$(get_env DOCKER_REGISTRY)"
           export DOCKER_USER="$(get_env DOCKER_USER)"
           export DOCKER_PASS="$(get_env DOCKER_PASS)"
+          export GIT_COMMIT="$(get_env git-commit)"
+          export BUILD_VERSION="${GIT_COMMIT:0:7}"
           export LOCAL_ARCH=ppc64le
           echo "Installing Go dependencies"
           yum install -y golang
@@ -153,6 +157,8 @@ tasks:
           export DOCKER_REGISTRY="$(get_env DOCKER_REGISTRY)"
           export DOCKER_USER="$(get_env DOCKER_USER)"
           export DOCKER_PASS="$(get_env DOCKER_PASS)"
+          export GIT_COMMIT="$(get_env git-commit)"
+          export BUILD_VERSION="${GIT_COMMIT:0:7}"
           export LOCAL_ARCH=s390x
           echo "Installing Go dependencies"
           yum install -y golang
@@ -194,6 +200,8 @@ tasks:
           export DOCKER_REGISTRY="$(get_env DOCKER_REGISTRY)"
           export DOCKER_USER="$(get_env DOCKER_USER)"
           export DOCKER_PASS="$(get_env DOCKER_PASS)"
+          export GIT_COMMIT="$(get_env git-commit)"
+          export BUILD_VERSION="${GIT_COMMIT:0:7}"
           echo "Installing Go dependencies"
           yum install -y golang
           make config-docker
