@@ -19,8 +19,8 @@ var ClientAuth = `
 kind: Secret
 apiVersion: v1
 metadata:
-  name: account-iam-oidc-client-auth
-  namespace: mcsp
+  name: {{ .NamePrefix }}oidc-client-auth
+  namespace: {{ .Namespace }}
   labels:
     by-squad: mcsp-user-management
     for-product: all
@@ -38,7 +38,7 @@ var OKD_Auth = `
 kind: Secret
 apiVersion: v1
 metadata:
-  name: account-iam-okd-auth
+  name: {{ .NamePrefix }}okd-auth
   labels:
     by-squad: mcsp-user-management
     for-product: all
@@ -53,7 +53,7 @@ var DatabaseSecret = `
 kind: Secret
 apiVersion: v1
 metadata:
-  name: account-iam-database-secret
+  name: {{ .NamePrefix }}database-secret
   labels:
     by-squad: mcsp-user-management
     for-product: all
@@ -81,7 +81,7 @@ var MpConfig = `
 kind: Secret
 apiVersion: v1
 metadata:
-  name: account-iam-mpconfig-secrets
+  name: {{ .NamePrefix }}mpconfig-secrets
   labels:
     by-squad: mcsp-user-management
     for-product: all
@@ -100,7 +100,7 @@ const INGRESS = `
 kind: NetworkPolicy
 apiVersion: networking.k8s.io/v1
 metadata:
-  name: account-iam-ingress-allow
+  name: {{ .NamePrefix }}ingress-allow
   labels:
     by-squad: mcsp-user-management
     for-product: all
@@ -109,7 +109,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      name: account-iam
+      name: {{ .NamePrefix }}account-iam
   ingress:
     - ports:
         # calls to the API
@@ -123,7 +123,7 @@ const EGRESS = `
 kind: NetworkPolicy
 apiVersion: networking.k8s.io/v1
 metadata:
-  name: account-iam-egress-allow
+  name: {{ .NamePrefix }}egress-allow
   labels:
     bcdr-candidate: t
     component-name: iam-services
@@ -132,7 +132,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      name: account-iam
+      name: {{ .NamePrefix }}account-iam
   policyTypes:
     - Egress
   egress:
@@ -165,7 +165,7 @@ const CONFIG_ENV = `
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: account-iam-env-configmap-development
+  name: {{ .NamePrefix }}env-configmap-development
   labels:
     by-squad: mcsp-user-management
     for-product: all
@@ -183,7 +183,7 @@ const DB_MIGRATION_MCSPID = `
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: account-iam-db-migration-mcspid
+  name: {{ .NamePrefix }}db-migration
   labels:
     by-squad: mcsp-user-management
     for-product: all
@@ -199,7 +199,7 @@ spec:
       labels:
         by-squad: mcsp-user-management
         for-product: all
-        name: account-iam
+        name: {{ .NamePrefix }}account-iam
     spec:
       restartPolicy: Never
       containers:
@@ -207,7 +207,7 @@ spec:
           image: RELATED_IMAGE_ACCOUNT_IAM
           envFrom:
             - secretRef:
-                name: account-iam-database-secret
+                name: {{ .NamePrefix }}database-secret
           command:
             - /bin/sh
             - '-c'
@@ -222,7 +222,7 @@ spec:
             limits:
               cpu: 500m
               memory: 600Mi
-      serviceAccountName: account-iam-migration
+  serviceAccountName: {{ .NamePrefix }}migration
       volumes:
         - name: account-iam-token
           projected:
@@ -238,7 +238,7 @@ const DB_MIGRATION_MCSPID_SA = `
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: account-iam-migration
+  name: {{ .NamePrefix }}migration
   labels:
     by-squad: mcsp-user-management
     for-product: all

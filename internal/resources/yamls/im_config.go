@@ -8,17 +8,17 @@ var IM_CONFIG_JOB = `
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: mcsp-im-config-job
+  name: {{ .NamePrefix }}im-config-job
   labels:
-    app: mcsp-im-config-job
+    app: {{ .NamePrefix }}im-config-job
 spec:
   template:
     metadata:
       labels:
-        app: mcsp-im-config-job
+        app: {{ .NamePrefix }}im-config-job
     spec:
       containers:
-      - name: mcsp-im-config-job
+      - name: {{ .NamePrefix }}im-config-job
         image: RELATED_IMAGE_MCSP_IM_CONFIG_JOB
         command: ["./mcsp-im-config-job"]
         imagePullPolicy: Always
@@ -43,39 +43,39 @@ spec:
           - name: ACCOUNT_IAM_BASE_URL
             valueFrom:
               secretKeyRef:
-                name: mcsp-im-integration-details
+                name: {{ .NamePrefix }}im-integration-details
                 key: ACCOUNT_IAM_URL
           - name: ACCOUNT_IAM_CONSOLE_BASE_URL
             valueFrom:
               secretKeyRef:
-                name: mcsp-im-integration-details
+                name: {{ .NamePrefix }}im-integration-details
                 key: ACCOUNT_IAM_CONSOLE_URL
           - name: API_KEY_SECRET_NAME
-            value: mcsp-im-integration-details
+            value: {{ .NamePrefix }}im-integration-details
           - name: ACCOUNT_NAME
             valueFrom:
               secretKeyRef:
-                name: mcsp-im-integration-details
+                name: {{ .NamePrefix }}im-integration-details
                 key: ACCOUNT_NAME
           - name: SUBSCRIPTION_NAME
             valueFrom:
               secretKeyRef:
-                name: mcsp-im-integration-details
+                name: {{ .NamePrefix }}im-integration-details
                 key: SUBSCRIPTION_NAME
           - name: SERVICE_NAME
             valueFrom:
               secretKeyRef:
-                name: mcsp-im-integration-details
+                name: {{ .NamePrefix }}im-integration-details
                 key: SERVICE_NAME
           - name: SERVICEID_NAME
             valueFrom:
               secretKeyRef:
-                name: mcsp-im-integration-details
+                name: {{ .NamePrefix }}im-integration-details
                 key: SERVICEID_NAME
           - name: APIKEY_NAME
             valueFrom:
               secretKeyRef:
-                name: mcsp-im-integration-details
+                name: {{ .NamePrefix }}im-integration-details
                 key: APIKEY_NAME
       serviceAccountName: user-mgmt-operand-serviceaccount
       restartPolicy: OnFailure

@@ -21,7 +21,7 @@ var UI_ISSUER_CA = `
 apiVersion: cert-manager.io/v1
 kind: Issuer
 metadata:
-  name: account-iam-ui-ca-issuer
+  name: {{ .NamePrefix }}ui-ca-issuer
 spec:
   ca:
     secretName: cs-ca-certificate-secret
@@ -31,15 +31,15 @@ var UI_CA_CERT = `
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: account-iam-ui-ca-cert
+  name: {{ .NamePrefix }}ui-ca-cert
 spec:
   isCA: true
-  commonName: account-iam-ui-ca-cert
-  secretName: account-iam-ui-ca-cert
+  commonName: {{ .NamePrefix }}ui-ca-cert
+  secretName: {{ .NamePrefix }}ui-ca-cert
   duration: 87660h0m0s
   renewBefore: 85500h0m0s
   issuerRef:
-    name: account-iam-ui-ca-issuer
+  name: {{ .NamePrefix }}ui-ca-issuer
     kind: Issuer
     group: cert-manager.io
 `
@@ -48,13 +48,13 @@ var UI_SVC_CERT = `
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: account-iam-ui-svc-tls-cert
+  name: {{ .NamePrefix }}ui-svc-tls-cert
 spec:
-  secretName: account-iam-ui-svc-tls-cert
+  secretName: {{ .NamePrefix }}ui-svc-tls-cert
   dnsNames:
     - {{ .Hostname }}
   issuerRef:
-    name: account-iam-ui-ca-issuer
+  name: {{ .NamePrefix }}ui-ca-issuer
     kind: Issuer
     group: cert-manager.io
 `
@@ -69,10 +69,10 @@ apiVersion: v1
 kind: Service
 metadata:
   labels:
-    app: 'account-iam-ui-api-service'
-  name: 'account-iam-ui-api-service'
+    app: '{{ .NamePrefix }}ui-api-service'
+  name: '{{ .NamePrefix }}ui-api-service'
   annotations:
-    service.beta.openshift.io/serving-cert-secret-name: 'account-iam-ui-api-server-tls'
+    service.beta.openshift.io/serving-cert-secret-name: '{{ .NamePrefix }}ui-api-server-tls'
 spec:
   ports:
     - name: https
@@ -80,7 +80,7 @@ spec:
       protocol: TCP
       targetPort: 3000
   selector:
-    app: "account-iam-ui-api-service-api"
+    app: "{{ .NamePrefix }}ui-api-service-api"
 `
 var SvcInstance = `
 ########################################################
@@ -92,10 +92,10 @@ apiVersion: v1
 kind: Service
 metadata:
   labels:
-    app: 'account-iam-ui-account-service'
-  name: 'account-iam-ui-account-service'
+    app: '{{ .NamePrefix }}ui-account-service'
+  name: '{{ .NamePrefix }}ui-account-service'
   annotations:
-    service.beta.openshift.io/serving-cert-secret-name: 'account-iam-ui-account-server-tls'
+    service.beta.openshift.io/serving-cert-secret-name: '{{ .NamePrefix }}ui-account-server-tls'
 spec:
   ports:
     - name: https
@@ -103,14 +103,14 @@ spec:
       protocol: TCP
       targetPort: 3003
   selector:
-    app: 'account-iam-ui-account-service-instance'
+    app: '{{ .NamePrefix }}ui-account-service-instance'
 `
 
 var ConfigUI = `
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: 'account-iam-ui-config'
+  name: '{{ .NamePrefix }}ui-config'
 data:
   IAM_API: '{{ .IAMAPI }}'
   NODE_ENV: '{{ .NodeEnv }}'
@@ -136,7 +136,7 @@ var SecretUI = `
 apiVersion: v1
 kind: Secret
 metadata:
-  name: 'account-iam-ui-secrets'
+  name: '{{ .NamePrefix }}ui-secrets'
 stringData:
   .env: |-
     REDIS_CA={{ .RedisCA }}
@@ -185,14 +185,14 @@ var RouteInstance = `
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
-  name: 'account-iam-ui-account'
+  name: '{{ .NamePrefix }}ui-account'
   annotations:
     haproxy.router.openshift.io/timeout: 30m
 spec:
   host: {{ .InstanceManagementHostname }}
   to:
     kind: Service
-    name: 'account-iam-ui-account-service'
+    name: '{{ .NamePrefix }}ui-account-service'
     weight: 100
   port:
     targetPort: https
@@ -207,14 +207,14 @@ var RouteAPIInstance = `
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
-  name: 'account-iam-ui-api-instance'
+  name: '{{ .NamePrefix }}ui-api-instance'
   annotations:
     haproxy.router.openshift.io/timeout: 30m
 spec:
   host: {{ .InstanceManagementHostname }}
   to:
     kind: Service
-    name: 'account-iam-ui-api-service'
+    name: '{{ .NamePrefix }}ui-api-service'
     weight: 100
   port:
     targetPort: https
@@ -229,13 +229,13 @@ var DeploymentAPI = `
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: 'account-iam-ui-api-deployment'
+  name: '{{ .NamePrefix }}ui-api-deployment'
   labels:
-    app: account-iam-ui-api-service
+    app: {{ .NamePrefix }}ui-api-service
 spec:
   selector:
     matchLabels:
-      app: 'account-iam-ui-api-service-api'
+      app: '{{ .NamePrefix }}ui-api-service-api'
   replicas: 1
   strategy:
     type: RollingUpdate
@@ -244,11 +244,11 @@ spec:
   template:
     metadata:
       labels:
-        app: 'account-iam-ui-api-service-api'
+        app: '{{ .NamePrefix }}ui-api-service-api'
         version: 1.2.0
     spec:
       containers:
-        - name: 'account-iam-ui-api-service-api'
+        - name: '{{ .NamePrefix }}ui-api-service-api'
           image: RELATED_IMAGE_API_SERVICE
           imagePullPolicy: Always
           ports:
@@ -257,69 +257,69 @@ spec:
             - name: DEPLOYMENT_ENV
               valueFrom:
                 configMapKeyRef:
-                  name: 'account-iam-ui-config'
+                  name: '{{ .NamePrefix }}ui-config'
                   key: DEPLOYMENT_ENV
             - name: HOSTNAME
               valueFrom:
                 configMapKeyRef:
-                  name: 'account-iam-ui-config'
+                  name: '{{ .NamePrefix }}ui-config'
                   key: HOSTNAME
             - name: METERING_API
               valueFrom:
                 configMapKeyRef:
-                  name: 'account-iam-ui-config'
+                  name: '{{ .NamePrefix }}ui-config'
                   key: METERING_API
             - name: IAM_API
               valueFrom:
                 configMapKeyRef:
-                  name: 'account-iam-ui-config'
+                  name: '{{ .NamePrefix }}ui-config'
                   key: IAM_API
             - name: PRODUCT_API
               valueFrom:
                 configMapKeyRef:
-                  name: 'account-iam-ui-config'
+                  name: '{{ .NamePrefix }}ui-config'
                   key: PRODUCT_API
             - name: SUBSCRIPTION_API
               valueFrom:
                 configMapKeyRef:
-                  name: 'account-iam-ui-config'
+                  name: '{{ .NamePrefix }}ui-config'
                   key: SUBSCRIPTION_API
             - name: INSTANCE_API
               valueFrom:
                 configMapKeyRef:
-                  name: 'account-iam-ui-config'
+                  name: '{{ .NamePrefix }}ui-config'
                   key: INSTANCE_API
             - name: ACCOUNT_API
               valueFrom:
                 configMapKeyRef:
-                  name: 'account-iam-ui-config'
+                  name: '{{ .NamePrefix }}ui-config'
                   key: ACCOUNT_API
             - name: API_OAUTH_TOKEN_URL
               valueFrom:
                 configMapKeyRef:
-                  name: 'account-iam-ui-config'
+                  name: '{{ .NamePrefix }}ui-config'
                   key: API_OAUTH_TOKEN_URL
             - name: CERT_DIR
               valueFrom:
                 configMapKeyRef:
-                  name: 'account-iam-ui-config'
+                  name: '{{ .NamePrefix }}ui-config'
                   key: CERT_DIR
             - name: ISSUER_BASE_URL
               valueFrom:
                 configMapKeyRef:
-                  name: 'account-iam-ui-config'
+                  name: '{{ .NamePrefix }}ui-config'
                   key: ISSUER_BASE_URL
             - name: APOLLO_CLIENT_API_URL
               valueFrom:
                 configMapKeyRef:
-                  name: 'account-iam-ui-config'
+                  name: '{{ .NamePrefix }}ui-config'
                   key: APOLLO_CLIENT_API_URL
           volumeMounts:
-            - name: 'account-iam-ui-secrets'
+            - name: '{{ .NamePrefix }}ui-secrets'
               mountPath: /opt/app-root/src/apps/api/.env
               readOnly: true
               subPath: .env
-            - name: 'account-iam-ui-api-server-tls'
+            - name: '{{ .NamePrefix }}ui-api-server-tls'
               mountPath: /opt/app-root/src/security
               readOnly: true
             - name: mutual-tls-auth
@@ -361,10 +361,10 @@ spec:
             failureThreshold: 3
       terminationGracePeriodSeconds: 10
       volumes:
-        - name: 'account-iam-ui-secrets'
+  - name: '{{ .NamePrefix }}ui-secrets'
           secret:
-            secretName: 'account-iam-ui-secrets'
-        - name: 'account-iam-ui-api-server-tls'
+            secretName: '{{ .NamePrefix }}ui-secrets'
+  - name: '{{ .NamePrefix }}ui-api-server-tls'
           secret:
             secretName: 'account-iam-ui-api-server-tls'
         - name: tls
@@ -376,8 +376,8 @@ spec:
         - name: mutual-tls-auth
           projected:
             sources:
-              - secret:
-                  name:  'account-iam-ui-svc-tls-cert'
+        - secret:
+          name:  '{{ .NamePrefix }}ui-svc-tls-cert'
                   items:
                     - key: ca.crt
                       path: ca.crt
@@ -392,13 +392,13 @@ var DeploymentInstance = `
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: 'account-iam-ui-account-deployment'
+  name: '{{ .NamePrefix }}ui-account-deployment'
   labels:
-    app: account-iam-ui-account-service
+    app: {{ .NamePrefix }}ui-account-service
 spec:
   selector:
     matchLabels:
-      app: 'account-iam-ui-account-service-instance'
+      app: '{{ .NamePrefix }}ui-account-service-instance'
   replicas: 1
   strategy:
     type: RollingUpdate
@@ -407,11 +407,11 @@ spec:
   template:
     metadata:
       labels:
-        app: 'account-iam-ui-account-service-instance'
+        app: '{{ .NamePrefix }}ui-account-service-instance'
         version: 1.2.0
     spec:
       containers:
-        - name: 'account-iam-ui-account-service-instance'
+        - name: '{{ .NamePrefix }}ui-account-service-instance'
           image: RELATED_IMAGE_ACCOUNT_SERVICE
           imagePullPolicy: Always
           ports:
@@ -420,39 +420,39 @@ spec:
             - name: DEPLOYMENT_ENV
               valueFrom:
                 configMapKeyRef:
-                  name: 'account-iam-ui-config'
+                  name: '{{ .NamePrefix }}ui-config'
                   key: DEPLOYMENT_ENV
             - name: CALLBACK_URL
               valueFrom:
                 configMapKeyRef:
-                  name: 'account-iam-ui-config'
+                  name: '{{ .NamePrefix }}ui-config'
                   key: CALLBACK_URL
             - name: API_OAUTH_TOKEN_URL
               valueFrom:
                 configMapKeyRef:
-                  name: 'account-iam-ui-config'
+                  name: '{{ .NamePrefix }}ui-config'
                   key: API_OAUTH_TOKEN_URL
             - name: CERT_DIR
               valueFrom:
                 configMapKeyRef:
-                  name: 'account-iam-ui-config'
+                  name: '{{ .NamePrefix }}ui-config'
                   key: CERT_DIR
             - name: ISSUER_BASE_URL
               valueFrom:
                 configMapKeyRef:
-                  name: 'account-iam-ui-config'
+                  name: '{{ .NamePrefix }}ui-config'
                   key: ISSUER_BASE_URL
             - name: APOLLO_CLIENT_API_URL
               valueFrom:
                 configMapKeyRef:
-                  name: 'account-iam-ui-config'
+                  name: '{{ .NamePrefix }}ui-config'
                   key: APOLLO_CLIENT_API_URL
           volumeMounts:
-            - name: 'account-iam-ui-secrets'
+            - name: '{{ .NamePrefix }}ui-secrets'
               mountPath: /opt/app-root/src/apps/account/.env
               readOnly: true
               subPath: .env
-            - name: 'account-iam-ui-account-server-tls'
+            - name: '{{ .NamePrefix }}ui-account-server-tls'
               mountPath: /opt/app-root/src/security
               readOnly: true
             - name: tls
@@ -491,12 +491,12 @@ spec:
             failureThreshold: 3
       terminationGracePeriodSeconds: 10
       volumes:
-        - name: 'account-iam-ui-secrets'
+  - name: '{{ .NamePrefix }}ui-secrets'
           secret:
             secretName: 'account-iam-ui-secrets'
-        - name: 'account-iam-ui-account-server-tls'
+        - name: '{{ .NamePrefix }}ui-account-server-tls'
           secret:
-            secretName: 'account-iam-ui-account-server-tls'
+            secretName: '{{ .NamePrefix }}ui-account-server-tls'
         - name: tls
           configMap:
             name: openshift-service-ca.crt
