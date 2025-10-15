@@ -74,6 +74,12 @@ type ReconcileContext struct {
 	WLPClientID     string
 }
 
+type TemplateBaseData struct {
+	AccountIAMName string
+	NamePrefix     string
+	Namespace      string
+}
+
 // BootstrapSecret stores all the bootstrap secret data
 type BootstrapSecret struct {
 	Realm                   string `json:"realm,omitempty"`
@@ -383,7 +389,11 @@ func (r *AccountIAMReconciler) verifyPrereq(ctx context.Context, reconcileCtx *R
 		return err
 	}
 
-	jobs := []string{resources.CreateDBJob, resources.DBMigrationJob, resources.IMConfigJob}
+	jobs := []string{
+		resources.CreateDBJob(instance.Name),
+		resources.DBMigrationJob(instance.Name),
+		resources.IMConfigJob(instance.Name),
+	}
 	if err := r.cleanJob(ctx, jobs, instance.Namespace); err != nil {
 		klog.Errorf("Failed to clean up jobs: %v", err)
 		return err
@@ -482,7 +492,8 @@ func (r *AccountIAMReconciler) createRedisCR(ctx context.Context, reconcileCtx *
 			}
 		}()
 
-		klog.Infof("Redis CRD exists, creating Redis CR %s in namespace %s", resources.Rediscp, instance.Namespace)
+		redisName := resources.Rediscp(instance.Name)
+		klog.Infof("Redis CRD exists, creating Redis CR %s in namespace %s", redisName, instance.Namespace)
 
 		err := r.injectData(ctx, instance, []string{yamls.RedisCRTemplate}, reconcileCtx.RedisCRData)
 		errChan <- err
@@ -496,7 +507,16 @@ func (r *AccountIAMReconciler) createRedisCR(ctx context.Context, reconcileCtx *
 	}
 
 	// Wait for Redis CR to be ready
-	return utils.WaitForRediscp(ctx, r.Client, instance.Namespace, resources.Rediscp, resources.RedisAPIGroup, resources.RedisKind, resources.Version, operatorv1alpha1.StatusCompleted)
+	return utils.WaitForRediscp(
+		ctx,
+		r.Client,
+		instance.Namespace,
+		resources.Rediscp(instance.Name),
+		resources.RedisAPIGroup,
+		resources.RedisKind,
+		resources.Version,
+		operatorv1alpha1.StatusCompleted,
+	)
 }
 
 // InitBootstrapData initializes BootstrapData with default values
@@ -590,8 +610,8 @@ func (r *AccountIAMReconciler) initMCSPData(reconcileCtx *ReconcileContext) erro
 	host := reconcileCtx.Host
 	ns := instance.Namespace
 
-	accountIAMHost := strings.Replace(host, "cp-console", "account-iam", 1)
-	accountIAMUIHost := strings.Replace(host, "cp-console", "account-iam-console", 1)
+	accountIAMHost := strings.Replace(host, "cp-console", fmt.Sprintf("%s-account-iam", instance.Name), 1)
+	accountIAMUIHost := strings.Replace(host, "cp-console", fmt.Sprintf("%s-account-iam-console", instance.Name), 1)
 
 	reconcileCtx.IntegrationData = IntegrationConfig{
 		AccountName:             "default-account",
@@ -743,17 +763,7 @@ func (r *AccountIAMReconciler) reconcileOperandResources(ctx context.Context, re
 // createDBBootstrapJob creates the database bootstrap job
 func (r *AccountIAMReconciler) createDBBootstrapJob(ctx context.Context, instance *operatorv1alpha1.AccountIAM) error {
 	klog.Infof("Applying DB Bootstrap Job")
-	object := &unstructured.Unstructured{}
-	resource := images.ReplaceInYAML(yamls.DB_BOOTSTRAP_JOB)
-	manifest := []byte(resource)
-	if err := yaml.Unmarshal(manifest, object); err != nil {
-		return err
-	}
-	object.SetNamespace(instance.Namespace)
-	if err := controllerutil.SetControllerReference(instance, object, r.Scheme); err != nil {
-		return err
-	}
-	return r.createOrUpdate(ctx, object)
+	return r.injectData(ctx, instance, []string{yamls.DB_BOOTSTRAP_JOB})
 }
 
 // prepareBootstrapData gets WLP client ID and prepares bootstrap data
@@ -818,7 +828,7 @@ func (r *AccountIAMReconciler) createAccountIAMRoutes(ctx context.Context, recon
 	klog.Infof("Creating Account IAM Routes")
 	instance := reconcileCtx.Instance
 
-	caCRT, err := utils.GetSecretData(ctx, r.Client, resources.AccountIAMCACert, instance.Namespace, resources.CAKey)
+	caCRT, err := utils.GetSecretData(ctx, r.Client, resources.AccountIAMCACert(instance.Name), instance.Namespace, resources.CAKey)
 	if err != nil {
 		klog.Errorf("Failed to get ca.crt from secret %s in namespace %s", resources.CSCASecret, instance.Namespace)
 		return err
@@ -852,32 +862,19 @@ func (r *AccountIAMReconciler) configureAndWaitForIssuer(ctx context.Context, re
 
 // createResourcesFromYAMLs is a helper function to create resources from YAML manifests
 func (r *AccountIAMReconciler) createResourcesFromYAMLs(ctx context.Context, instance *operatorv1alpha1.AccountIAM, yamls []string) error {
-	for _, v := range yamls {
-		object := &unstructured.Unstructured{}
-
-		if images.ContainsImageReferences(v) {
-			v = images.ReplaceInYAML(v)
-		}
-
-		manifest := []byte(v)
-		if err := yaml.Unmarshal(manifest, object); err != nil {
-			return err
-		}
-		object.SetNamespace(instance.Namespace)
-		if err := controllerutil.SetControllerReference(instance, object, r.Scheme); err != nil {
-			return err
-		}
-		if err := r.createOrUpdate(ctx, object); err != nil {
-			return err
-		}
-	}
-	return nil
+	return r.injectData(ctx, instance, yamls)
 }
 
 func (r *AccountIAMReconciler) injectData(ctx context.Context, instance *operatorv1alpha1.AccountIAM, manifests []string, dataList ...interface{}) error {
 
 	// Combine the data from all structs into a single map
-	combinedData := utils.CombineData(dataList...)
+	baseData := TemplateBaseData{
+		AccountIAMName: instance.Name,
+		NamePrefix:     resources.NamePrefix(instance.Name),
+		Namespace:      instance.Namespace,
+	}
+
+	combinedData := utils.CombineData(append(dataList, baseData)...)
 
 	var buffer bytes.Buffer
 	// Loop through each secret manifest that requires data injection
@@ -1083,7 +1080,7 @@ func (r *AccountIAMReconciler) configIM(ctx context.Context, reconcileCtx *Recon
 		return err
 	}
 
-	if err := utils.WaitForJob(ctx, r.Client, reconcileCtx.Instance.Namespace, resources.IMConfigJob); err != nil {
+	if err := utils.WaitForJob(ctx, r.Client, reconcileCtx.Instance.Namespace, resources.IMConfigJob(reconcileCtx.Instance.Name)); err != nil {
 		klog.Error("Failed to wait for IM Config Job to be succeeded")
 		return err
 	}
@@ -1100,32 +1097,8 @@ func (r *AccountIAMReconciler) reconcileUI(ctx context.Context, reconcileCtx *Re
 		return err
 	}
 
-	// Manifests which need data injected before creation
-	object := &unstructured.Unstructured{}
-	tmpl := template.New("template for injecting data into YAMLs")
-	var tmplWriter bytes.Buffer
-	for _, v := range yamls.TemplateYamlsUI {
-		manifest := v
-		tmplWriter.Reset()
-
-		tmpl, err := tmpl.Parse(manifest)
-		if err != nil {
-			return err
-		}
-		if err := tmpl.Execute(&tmplWriter, reconcileCtx.UIData); err != nil {
-			return err
-		}
-
-		if err := yaml.Unmarshal(tmplWriter.Bytes(), object); err != nil {
-			return err
-		}
-		object.SetNamespace(reconcileCtx.Instance.Namespace)
-		if err := controllerutil.SetControllerReference(reconcileCtx.Instance, object, r.Scheme); err != nil {
-			return err
-		}
-		if err := r.createOrUpdate(ctx, object); err != nil {
-			return err
-		}
+	if err := r.injectData(ctx, reconcileCtx.Instance, yamls.TemplateYamlsUI, reconcileCtx.UIData); err != nil {
+		return err
 	}
 
 	klog.Infof("Creating static yamls for UI")
@@ -1153,10 +1126,10 @@ func (r *AccountIAMReconciler) initUIBootstrapData(ctx context.Context, reconcil
 
 	// Use GetSecretsData to fetch all secrets concurrently
 	secrets := map[string]string{
-		"apiKey":        fmt.Sprintf("%s/%s", resources.IMAPISecret, resources.MCSPAPIKey),
-		"redisURLSSL":   fmt.Sprintf("%s/%s", resources.Rediscp, resources.RedisURLssl),
-		"redisPassword": fmt.Sprintf("%s/%s", resources.Rediscp, resources.RedisPassword),
-		"redisCACert":   fmt.Sprintf("%s/%s", resources.RedisCACert, resources.CAKey),
+		"apiKey":        fmt.Sprintf("%s/%s", resources.IMAPISecret(instance.Name), resources.MCSPAPIKey),
+		"redisURLSSL":   fmt.Sprintf("%s/%s", resources.Rediscp(instance.Name), resources.RedisURLssl),
+		"redisPassword": fmt.Sprintf("%s/%s", resources.Rediscp(instance.Name), resources.RedisPassword),
+		"redisCACert":   fmt.Sprintf("%s/%s", resources.RedisCACert(instance.Name), resources.CAKey),
 	}
 
 	klog.Infof("Batch retrieving %d secrets for UI bootstrap data", len(secrets))
@@ -1195,8 +1168,8 @@ func (r *AccountIAMReconciler) initUIBootstrapData(ctx context.Context, reconcil
 	}
 
 	reconcileCtx.UIData = UIBootstrapTemplate{
-		Hostname:                   utils.Concat("account-iam-console-", instance.Namespace, ".", domain),
-		InstanceManagementHostname: utils.Concat("account-iam-console-", instance.Namespace, ".", domain),
+		Hostname:                   utils.Concat(instance.Name, "-account-iam-console-", instance.Namespace, ".", domain),
+		InstanceManagementHostname: utils.Concat(instance.Name, "-account-iam-console-", instance.Namespace, ".", domain),
 		ClientID:                   string(decodedClientID),
 		ClientSecret:               string(decodedClientSecret),
 		IAMGlobalAPIKey:            apiKey,
@@ -1206,7 +1179,7 @@ func (r *AccountIAMReconciler) initUIBootstrapData(ctx context.Context, reconcil
 		RedisCA:                    caCRT,
 		SessionSecret:              string(SessionSecret[0]),
 		DeploymentCloud:            "IBM_CLOUD",
-		IAMAPI:                     utils.Concat("https://account-iam-", instance.Namespace, ".", domain),
+		IAMAPI:                     utils.Concat("https://", instance.Name, "-account-iam-", instance.Namespace, ".", domain),
 		NodeEnv:                    "production",
 		CertDir:                    "../../security",
 		ConfigEnv:                  "dev",
@@ -1325,7 +1298,7 @@ func (r *AccountIAMReconciler) updateManagedResourcesStatus(ctx context.Context,
 	allResourcesReady := true
 
 	// Check Redis status
-	redisResource, redisReady := utils.GetRedisResourceStatus(ctx, r.Client, instance.Namespace)
+	redisResource, redisReady := utils.GetRedisResourceStatus(ctx, r.Client, instance.Namespace, instance.Name)
 	managedResources = append(managedResources, redisResource)
 	if !redisReady {
 		allResourcesReady = false
@@ -1339,7 +1312,11 @@ func (r *AccountIAMReconciler) updateManagedResourcesStatus(ctx context.Context,
 	}
 
 	// Check job statuses
-	jobsToCheck := []string{resources.CreateDBJob, resources.DBMigrationJob, resources.IMConfigJob}
+	jobsToCheck := []string{
+		resources.CreateDBJob(instance.Name),
+		resources.DBMigrationJob(instance.Name),
+		resources.IMConfigJob(instance.Name),
+	}
 	for _, jobName := range jobsToCheck {
 		jobResource, jobReady := utils.GetJobStatus(ctx, r.Client, jobName, instance.Namespace)
 		managedResources = append(managedResources, jobResource)
@@ -1350,9 +1327,9 @@ func (r *AccountIAMReconciler) updateManagedResourcesStatus(ctx context.Context,
 
 	// Check service statuses
 	servicesToCheck := []string{
-		resources.AccountIAM,
-		resources.AccountIAMUIService,
-		resources.AccountIAMUIAPIService,
+		resources.AccountIAM(instance.Name),
+		resources.AccountIAMUIService(instance.Name),
+		resources.AccountIAMUIAPIService(instance.Name),
 	}
 	for _, serviceName := range servicesToCheck {
 		serviceResource, serviceReady := utils.GetServiceStatus(ctx, r.Client, serviceName, instance.Namespace)
@@ -1365,14 +1342,14 @@ func (r *AccountIAMReconciler) updateManagedResourcesStatus(ctx context.Context,
 	// Check secret statuses
 	secretsToCheck := []string{
 		resources.BootstrapSecret,
-		resources.AccountIAMDBSecret,
-		resources.AccountIAMConfigSecret,
-		resources.AccountIAMOidcClientAuth,
-		resources.AccountIAMOKDAuth,
-		resources.AccountIAMUISecrets,
+		resources.AccountIAMDBSecret(instance.Name),
+		resources.AccountIAMConfigSecret(instance.Name),
+		resources.AccountIAMOidcClientAuth(instance.Name),
+		resources.AccountIAMOKDAuth(instance.Name),
+		resources.AccountIAMUISecrets(instance.Name),
 		resources.IMOIDCCrendential,
-		resources.IMAPISecret,
-		resources.AccountIAMCACert,
+		resources.IMAPISecret(instance.Name),
+		resources.AccountIAMCACert(instance.Name),
 	}
 	for _, secretName := range secretsToCheck {
 		secretResource, secretReady := utils.GetSecretStatus(ctx, r.Client, secretName, instance.Namespace)
@@ -1384,9 +1361,9 @@ func (r *AccountIAMReconciler) updateManagedResourcesStatus(ctx context.Context,
 
 	// Check route statuses
 	routesToCheck := []string{
-		resources.AccountIAM,
-		resources.AccountIAMUIRoute,
-		resources.AccountIAMUIAPIInstance,
+		resources.AccountIAM(instance.Name),
+		resources.AccountIAMUIRoute(instance.Name),
+		resources.AccountIAMUIAPIInstance(instance.Name),
 	}
 	for _, routeName := range routesToCheck {
 		routeResource, routeReady := utils.GetRouteStatus(ctx, r.Client, routeName, instance.Namespace)
