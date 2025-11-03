@@ -1,18 +1,17 @@
 # Override default variable values from top level Makefile #
 
-VERSION ?= 1.0.0
+BUILD_VERSION ?= $(shell git describe --exact-match 2> /dev/null || git describe --match=$(git rev-parse --short=8 HEAD) --always --dirty --abbrev=8)
 CHANNELS ?= v1.0
 
 # IBM specific # 
 
-ifeq ($(BUILD_LOCALLY),0)
-	IMG_REGISTRY ?= docker-na-public.artifactory.swg-devops.com/hyc-cloud-private-integration-docker-local/ibmcom
-	export CONFIG_DOCKER_TARGET = config-docker
+ifdef DOCKER_REGISTRY
+	IMG_REGISTRY ?= $(DOCKER_REGISTRY)
 else
 	IMG_REGISTRY ?= docker-na-public.artifactory.swg-devops.com/hyc-cloud-private-scratch-docker-local/ibmcom
 endif
 
-IMG ?= $(IMAGE_TAG_BASE):latest
+IMG ?= $(IMAGE_TAG_BASE):$(BUILD_VERSION)
 
 ## Image build variable
 VCS_REF ?= $(shell git rev-parse HEAD)
@@ -29,20 +28,23 @@ LOCAL_SCRIPTS_DIR ?= $(ROOT_DIR)/scripts
 .PHONY: require-local-bin-dir
 require-local-bin-dir:
 	mkdir -p $(LOCAL_BIN_DIR)
-	
 
 ARCH := $(shell uname -m)
-LOCAL_ARCH := "amd64"
+
+# Auto-detect LOCAL_ARCH only when the caller hasn't provided one.
+ifeq ($(origin LOCAL_ARCH), undefined)
+LOCAL_ARCH := amd64
 ifeq ($(ARCH),x86_64)
-    LOCAL_ARCH="amd64"
+	LOCAL_ARCH := amd64
 else ifeq ($(ARCH),ppc64le)
-    LOCAL_ARCH="ppc64le"
+	LOCAL_ARCH := ppc64le
 else ifeq ($(ARCH),s390x)
-    LOCAL_ARCH="s390x"
+	LOCAL_ARCH := s390x
 else ifeq ($(ARCH),arm64)
-    LOCAL_ARCH="arm64"
+	LOCAL_ARCH := arm64
 else
-    $(error "This system's ARCH $(ARCH) isn't recognized/supported")
+	$(error "This system's ARCH $(ARCH) isn't recognized/supported")
+endif
 endif
 
 OS := $(shell uname)
@@ -79,7 +81,7 @@ configure-dev:
 	$(eval BUNDLE_IMG := $(DEV_BUNDLE_IMG))
 	$(eval CATALOG_IMG := $(DEV_CATALOG_IMG))
 	$(MAKE) bundle IMG=$(IMG)
-	
+
 ##@ Development Build
 .PHONY: docker-build-dev
 docker-build-dev: configure-dev docker-build 
@@ -100,13 +102,15 @@ catalog-build-dev: configure-dev catalog-build
 catalog-build-push-dev: configure-dev catalog-build-dev catalog-push
 
 ##@ Production Build
-.PHONY: docker-build-prod
-docker-build-prod: docker-build
 
 .PHONY: docker-build-push-prod
-docker-build-push-prod: docker-build-prod docker-push
-	$(CONTAINER_TOOL) tag $(IMG) $(IMAGE_TAG_BASE):$(VERSION)
-	$(MAKE) docker-push IMG=$(IMAGE_TAG_BASE):$(VERSION)
+docker-build-push-prod:
+	$(MAKE) docker-build
+	$(CONTAINER_TOOL) tag $(IMG) $(IMAGE_TAG_BASE)-$(LOCAL_ARCH):$(BUILD_VERSION)
+	$(MAKE) docker-push IMG=$(IMAGE_TAG_BASE)-$(LOCAL_ARCH):$(BUILD_VERSION)
+
+multiarch-image:
+	@MAX_PULLING_RETRY=20 RETRY_INTERVAL=30 common/scripts/multiarch_image.sh $(IMAGE_TAG_BASE) $(BUILD_VERSION) $(VERSION)
 
 clean-before-commit:
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(ICR_IMAGE_TAG_BASE):latest
@@ -116,11 +120,15 @@ clean-before-commit:
 		./bundle/manifests/tmp.yaml > ./bundle/manifests/ibm-user-management-operator.clusterserviceversion.yaml
 	rm ./bundle/manifests/tmp.yaml
 
-get-cluster-credentials:
-	mkdir -p ~/.kube; cp -v /etc/kubeconfig/config ~/.kube; kubectl config use-context default; kubectl get nodes; echo going forward retiring google cloud
-
-config-docker: get-cluster-credentials
-	@scripts/makefile-config/artifactory_config_docker.sh
+# Configure docker for building images
+.PHONY: config-docker
+config-docker:
+	@echo "Configuring docker for building images"
+	@if [ -z "$(DOCKER_USER)" ] || [ -z "$(DOCKER_PASS)" ]; then \
+			echo "Error: DOCKER_USER and DOCKER_PASS must be defined"; \
+			exit 1; \
+		fi
+	$(CONTAINER_TOOL) login -u $(DOCKER_USER) -p $(DOCKER_PASS) $(IMG_REGISTRY); \
 
 # Test
 .PHONY: check
@@ -130,8 +138,6 @@ check: ## @code Run the code check
 # Override default variable values or prerequisites from top level Makefile #
 
 bundle: IMG = icr.io/cpopen/ibm-user-management-operator:latest
-
-docker-build: $(CONFIG_DOCKER_TARGET)
 
 # Change the image to dev when applying deployment manifests
 deploy: configure-dev

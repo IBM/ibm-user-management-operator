@@ -5,34 +5,7 @@ include make/*.mk
 # To re-generate a bundle for another specific version without changing the standard setup, you can:
 # - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
-VERSION ?= 1.0.0
-RELEASE_VERSION ?= $(shell cat ./version/version.go | grep "Version =" | awk '{ print $$3}' | tr -d '"')
-VCS_REF ?= $(shell git rev-parse HEAD)
-
-ifeq ($(BUILD_LOCALLY),0)
-    export CONFIG_DOCKER_TARGET = config-docker
-    export CONFIG_DOCKER_TARGET_QUAY = config-docker-quay
-endif
-
-ARCH := $(shell uname -m)
-LOCAL_ARCH := "amd64"
-ifeq ($(ARCH),x86_64)
-    LOCAL_ARCH="amd64"
-else ifeq ($(ARCH),ppc64le)
-    LOCAL_ARCH="ppc64le"
-else ifeq ($(ARCH),s390x)
-    LOCAL_ARCH="s390x"
-else
-    $(error "This system's ARCH $(ARCH) isn't recognized/supported")
-endif
-
-ifeq ($(BUILD_LOCALLY),0)
-ARTIFACTORYA_REGISTRY ?= "docker-na-public.artifactory.swg-devops.com/hyc-cloud-private-integration-docker-local/ibmcom"
-else
-ARTIFACTORYA_REGISTRY ?= "docker-na-public.artifactory.swg-devops.com/hyc-cloud-private-scratch-docker-local/ibmcom"
-endif
-# Current Operator image name
-OPERATOR_IMAGE_NAME ?= ibm-user-management-operator
+VERSION ?= $(shell cat ./version/version.go | grep "Version =" | awk '{ print $$3}' | tr -d '"v')
 
 # CHANNELS define the bundle channels used in the bundle.
 # Add a new line here if you would like to change its default config. (E.g CHANNELS = "candidate,fast,stable")
@@ -146,7 +119,7 @@ vet: ## Run go vet against code.
 
 .PHONY: test
 test:
-	echo "No tests available"
+	go test ./internal/controller
 
 # Utilize Kind or modify the e2e tests to load the image locally, enabling compatibility with other vendors.
 .PHONY: test-e2e  # Run the e2e tests against a Kind k8s instance that is spun up.
@@ -170,20 +143,6 @@ lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
 	$(GOLANGCI_LINT) run --fix
 
 ##@ Build
-build-operator-image: $(CONFIG_DOCKER_TARGET) ## Build the operator image.
-	@echo "Building the $(OPERATOR_IMAGE_NAME) docker image for $(LOCAL_ARCH)..."
-	@echo "GOARCH=$(LOCAL_ARCH)"
-	@docker build -t $(OPERATOR_IMAGE_NAME)-$(LOCAL_ARCH):$(VERSION) \
-	--build-arg VCS_REF=$(VCS_REF) --build-arg GOARCH=$(LOCAL_ARCH) -f Dockerfile .
-
-##@ Release
-build-push-image: $(CONFIG_DOCKER_TARGET) build-operator-image  ## Build and push the operator images.
-	@echo "Pushing the $(OPERATOR_IMAGE_NAME) docker image for $(LOCAL_ARCH)..."
-	@docker tag $(OPERATOR_IMAGE_NAME)-$(LOCAL_ARCH):$(VERSION) $(ARTIFACTORYA_REGISTRY)/$(OPERATOR_IMAGE_NAME)-$(LOCAL_ARCH):$(VERSION)
-	@docker push $(ARTIFACTORYA_REGISTRY)/$(OPERATOR_IMAGE_NAME)-$(LOCAL_ARCH):$(VERSION)
-
-multiarch-image: $(CONFIG_DOCKER_TARGET) ## Generate multiarch images for operator image.
-	@MAX_PULLING_RETRY=20 RETRY_INTERVAL=30 common/scripts/multiarch_image.sh $(ARTIFACTORYA_REGISTRY) $(OPERATOR_IMAGE_NAME) $(VERSION) $(RELEASE_VERSION)
 
 .PHONY: build
 build: manifests generate fmt vet ## Build manager binary.
@@ -198,8 +157,8 @@ run: manifests generate fmt vet ## Run a controller from your host.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build -t ${IMG} \
-	--build-arg VCS_REF=$(VCS_REF) .
+	$(CONTAINER_TOOL) buildx build --platform linux/$(LOCAL_ARCH) --load -t ${IMG} \
+			--build-arg VCS_REF=$(VCS_REF) --build-arg TARGETARCH=$(LOCAL_ARCH) .; \
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.

@@ -10,7 +10,6 @@ YQ_VERSION ?= v4.44.1
 LOCAL_SCRIPTS_MAKEFILE_CHECK_DIR ?= $(LOCAL_SCRIPTS_DIR)/makefile-check
 LOCAL_SCRIPTS_MAKEFILE_INSTALL_DIR ?= $(LOCAL_SCRIPTS_DIR)/makefile-install
 
-
 ## Docker Buildx
 
 DOCKER_CLI_PLUGINS ?= ~/.docker/cli-plugins
