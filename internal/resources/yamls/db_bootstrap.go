@@ -4,11 +4,11 @@ const DB_BOOTSTRAP_JOB = `
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: create-account-iam-db
+  name: {{ .NamePrefix }}create-db
 spec:
   template:
     metadata:
-      name: create-account-iam-db
+      name: {{ .NamePrefix }}create-db
     spec:
       containers:
       - name: postgres

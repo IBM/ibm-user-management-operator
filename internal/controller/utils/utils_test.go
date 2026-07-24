@@ -387,8 +387,9 @@ var _ = Describe("Utils Functions", func() {
 
 var _ = Describe("Resource Status Functions", func() {
 	var (
-		testNamespace = "test-namespace"
-		fakeClient    client.Client
+		testNamespace  = "test-namespace"
+		accountIAMName = "test-account"
+		fakeClient     client.Client
 	)
 
 	BeforeEach(func() {
@@ -397,11 +398,11 @@ var _ = Describe("Resource Status Functions", func() {
 
 	Context("Redis Resource Status", func() {
 		It("should return not found when Redis CR doesn't exist", func() {
-			status, ready := GetRedisResourceStatus(ctx, fakeClient, testNamespace)
+			status, ready := GetRedisResourceStatus(ctx, fakeClient, testNamespace, accountIAMName)
 
 			Expect(ready).To(BeFalse())
 			Expect(status.Status).To(Equal(operatorv1alpha1.StatusNotFound))
-			Expect(status.ObjectName).To(Equal(resources.Rediscp))
+			Expect(status.ObjectName).To(Equal(resources.Rediscp(accountIAMName)))
 			Expect(status.Kind).To(Equal(resources.RedisKind))
 		})
 
@@ -411,7 +412,7 @@ var _ = Describe("Resource Status Functions", func() {
 					"apiVersion": resources.RedisAPIGroup + "/" + resources.Version,
 					"kind":       resources.RedisKind,
 					"metadata": map[string]interface{}{
-						"name":      resources.Rediscp,
+						"name":      resources.Rediscp(accountIAMName),
 						"namespace": testNamespace,
 					},
 					"status": map[string]interface{}{
@@ -427,7 +428,7 @@ var _ = Describe("Resource Status Functions", func() {
 
 			Expect(fakeClient.Create(ctx, redisCR)).To(Succeed())
 
-			status, ready := GetRedisResourceStatus(ctx, fakeClient, testNamespace)
+			status, ready := GetRedisResourceStatus(ctx, fakeClient, testNamespace, accountIAMName)
 			Expect(ready).To(BeTrue())
 			Expect(status.Status).To(Equal(operatorv1alpha1.StatusCompleted))
 		})
@@ -438,7 +439,7 @@ var _ = Describe("Resource Status Functions", func() {
 					"apiVersion": resources.RedisAPIGroup + "/" + resources.Version,
 					"kind":       resources.RedisKind,
 					"metadata": map[string]interface{}{
-						"name":      resources.Rediscp,
+						"name":      resources.Rediscp(accountIAMName),
 						"namespace": testNamespace,
 					},
 					"status": map[string]interface{}{
@@ -454,7 +455,7 @@ var _ = Describe("Resource Status Functions", func() {
 
 			Expect(fakeClient.Create(ctx, redisCR)).To(Succeed())
 
-			status, ready := GetRedisResourceStatus(ctx, fakeClient, testNamespace)
+			status, ready := GetRedisResourceStatus(ctx, fakeClient, testNamespace, accountIAMName)
 			Expect(ready).To(BeFalse())
 			Expect(status.Status).To(Equal(operatorv1alpha1.StatusNotReady))
 		})
@@ -465,7 +466,7 @@ var _ = Describe("Resource Status Functions", func() {
 					"apiVersion": resources.RedisAPIGroup + "/" + resources.Version,
 					"kind":       resources.RedisKind,
 					"metadata": map[string]interface{}{
-						"name":      resources.Rediscp,
+						"name":      resources.Rediscp(accountIAMName),
 						"namespace": testNamespace,
 					},
 					"status": map[string]interface{}{
@@ -481,7 +482,7 @@ var _ = Describe("Resource Status Functions", func() {
 
 			Expect(fakeClient.Create(ctx, redisCR)).To(Succeed())
 
-			status, ready := GetRedisResourceStatus(ctx, fakeClient, testNamespace)
+			status, ready := GetRedisResourceStatus(ctx, fakeClient, testNamespace, accountIAMName)
 			Expect(ready).To(BeFalse())
 			Expect(status.Status).To(Equal(operatorv1alpha1.StatusError))
 		})
@@ -492,7 +493,7 @@ var _ = Describe("Resource Status Functions", func() {
 					"apiVersion": resources.RedisAPIGroup + "/" + resources.Version,
 					"kind":       resources.RedisKind,
 					"metadata": map[string]interface{}{
-						"name":      resources.Rediscp,
+						"name":      resources.Rediscp(accountIAMName),
 						"namespace": testNamespace,
 					},
 				},
@@ -505,7 +506,7 @@ var _ = Describe("Resource Status Functions", func() {
 
 			Expect(fakeClient.Create(ctx, redisCR)).To(Succeed())
 
-			status, ready := GetRedisResourceStatus(ctx, fakeClient, testNamespace)
+			status, ready := GetRedisResourceStatus(ctx, fakeClient, testNamespace, accountIAMName)
 			Expect(ready).To(BeFalse())
 			Expect(status.Status).To(Equal(operatorv1alpha1.StatusError))
 		})

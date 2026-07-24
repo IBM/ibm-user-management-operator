@@ -415,9 +415,10 @@ func checkKeyBeforeMerging(key string, defaultMap, changedMap interface{}, final
 // ------------------ Resource Status Functions --------------
 
 // GetRedisResourceStatus checks the status of Redis resources
-func GetRedisResourceStatus(ctx context.Context, k8sClient client.Client, namespace string) (odlm.ResourceStatus, bool) {
+func GetRedisResourceStatus(ctx context.Context, k8sClient client.Client, namespace, accountIAMName string) (odlm.ResourceStatus, bool) {
+	redisName := resources.Rediscp(accountIAMName)
 	redisResource := odlm.ResourceStatus{
-		ObjectName: resources.Rediscp,
+		ObjectName: redisName,
 		Namespace:  namespace,
 		Kind:       resources.RedisKind,
 		APIVersion: resources.RedisAPIGroup + "/" + resources.Version,
@@ -425,7 +426,7 @@ func GetRedisResourceStatus(ctx context.Context, k8sClient client.Client, namesp
 	}
 
 	redisCR := NewUnstructured(resources.RedisAPIGroup, resources.RedisKind, resources.Version)
-	if err := k8sClient.Get(ctx, client.ObjectKey{Name: resources.Rediscp, Namespace: namespace}, redisCR); err != nil {
+	if err := k8sClient.Get(ctx, client.ObjectKey{Name: redisName, Namespace: namespace}, redisCR); err != nil {
 		if !k8serrors.IsNotFound(err) {
 			klog.Error(err, "Failed to get Redis CR")
 			redisResource.Status = operatorv1alpha1.StatusError
